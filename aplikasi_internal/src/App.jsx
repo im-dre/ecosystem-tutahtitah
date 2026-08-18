@@ -713,7 +713,7 @@ export default function App() {
         try {
             const { data, error } = await supabase.from('employees').select('*').eq('auth_id', authId).maybeSingle();
             if (data && !error) {
-                setUser({ role: data.role, name: data.full_name, id: data.id, auth_id: authId });
+                setUser({ role: data.role, name: data.full_name, id: data.id, auth_id: authId, is_super_admin: data.is_super_admin });
                 requestNotificationPermission();
             } else {
                 handleLogout();
@@ -1372,6 +1372,31 @@ export default function App() {
                 const { error } = await supabase.from("orders").update({ status: "cancelled", kendala_info: finalReason }).eq("id", editingOrder.id);
                 if (error) throw error; setIsEditModalOpen(false); showNotif("Pesanan berhasil DIBATALKAN!", "success");
             } catch (err) { showNotif(`Gagal membatalkan`, "error"); }
+        }
+    };
+
+    const handleDeleteOrder = async (orderId) => {
+        const result = await Swal.fire({
+            title: 'PERINGATAN BAHAYA!',
+            text: 'Apakah Anda yakin ingin MENGHAPUS PERMANEN orderan ini dari database? Aksi ini tidak dapat dibatalkan.',
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: 'Ya, Hapus Permanen!',
+            cancelButtonText: 'Batal'
+        });
+        
+        if (!result.isConfirmed) return;
+
+        try {
+            const { error } = await supabase.from('orders').delete().eq('id', orderId);
+            if (error) throw error;
+            setAllOrders(prev => prev.filter(o => o.id !== orderId));
+            showNotif("Orderan berhasil dihapus permanen!", "success");
+        } catch (err) {
+            console.error(err);
+            showNotif(`Gagal menghapus: ${err.message}`, "error");
         }
     };
 
@@ -2897,6 +2922,11 @@ export default function App() {
                                                                 </div>
                                                             )}
                                                             <div className="text-[9px] text-gray-400 mt-3 font-bold text-right uppercase">Mitra Terakhir: {couriersList.find(c => c.id === o.assigned_courier_id)?.full_name || 'Tidak ada'}</div>
+                                                              {user?.is_super_admin && (
+                                                                  <button onClick={() => handleDeleteOrder(o.id)} className="mt-3 w-full bg-red-50 text-red-600 hover:bg-red-100 font-bold py-2 rounded-lg text-[10px] transition border border-red-200 shadow-sm flex items-center justify-center gap-1">
+                                                                      🗑️ Hapus Permanen
+                                                                  </button>
+                                                              )}
                                                         </div>
                                                     )
                                                 })}
