@@ -1,0 +1,23 @@
+{
+  "name": "Admin Tutah Titah",
+  "short_name": "Admin Tutahtitah",
+  "description": "Dashboard Manajemen Operasional Tutah Titah",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFFFFF",
+  "theme_color": "#004aad",
+  "icons": [
+    {
+      "src": "/admin-tutahtitah.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/admin-tutahtitah.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

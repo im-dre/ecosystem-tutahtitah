@@ -1,0 +1,22 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "id.tutahtitah.admin.twa",
+      "sha256_cert_fingerprints": [
+        "39:AD:C4:95:B7:09:02:DD:75:9D:A0:BE:69:A1:CE:92:05:D2:80:2E:9E:24:50:50:96:E6:BF:E5:52:86:FA:D0"
+      ]
+    }
+  },
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "id.tutahtitah.kurir.twa",
+      "sha256_cert_fingerprints": [
+        "49:30:2A:53:48:63:13:99:A5:FF:D7:ED:46:07:48:40:11:A7:BD:CC:C7:F1:1C:9C:19:EE:8B:F2:81:10:D3:2E"
+      ]
+    }
+  }
+]

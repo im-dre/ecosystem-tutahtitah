@@ -1,0 +1,23 @@
+{
+  "name": "Kurir Tutah Titah",
+  "short_name": "Kurir Tutahtitah",
+  "description": "Aplikasi Khusus Mitra Kurir Tutah Titah",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#FFFFFF",
+  "theme_color": "#004aad",
+  "icons": [
+    {
+      "src": "/kurir-tutahtitah.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/kurir-tutahtitah.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="id" class="notranslate">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="google" content="notranslate" />
+    <link rel="icon" type="image/svg+xml" href="/logo_tutah_titah.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aplikasi Tutah Titah</title>
+
+    <script>
+      // 1. Cek domain yang sedang diakses saat ini
+      const currentHost = window.location.hostname;
+      
+      // 2. Buat tag link manifest secara dinamis
+      const link = document.createElement('link');
+      link.rel = 'manifest';
+      
+      // 3. Arahkan file manifest sesuai domain
+      if (currentHost.includes('kurir')) {
+        link.href = '/manifest-kurir.json';
+      } else {
+        // Default jika diakses lewat admin.tutahtitah.id atau domain utama
+        link.href = '/manifest-admin.json';
+      }
+      
+      // 4. Masukkan ke dalam Head HTML
+      document.head.appendChild(link);
+
+      // Daftarkan Service Worker
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js')
+            .then(registration => {
+              console.log('ServiceWorker siap kerja bos: ', registration.scope);
+            })
+            .catch(err => {
+              console.log('ServiceWorker gagal: ', err);
+            });
+        });
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
