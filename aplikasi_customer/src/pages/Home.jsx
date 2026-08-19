@@ -169,14 +169,10 @@ export default function Home() {
     } else if (serviceName === 'Kirim/Antar Barang') {
       navigate('/kirim-barang');
     } else if (serviceName === 'Belanja Pasar/Warung') {
-      const customMerchant = merchants.find(m => m.is_custom_order);
-      if (customMerchant) {
-        navigate(`/merchant/${customMerchant.id}`);
-      }
+      navigate('/merchant/eb21ba3d-3486-4aee-bc57-ed2e854297bc');
     }
   };
 
-  // Filter merchants based on category and search query
   const filteredMerchants = merchants.filter(m => {
     let matchesCategory = true;
     if (activeCategory !== 'Semua Toko') {
@@ -203,7 +199,6 @@ export default function Home() {
   const handleSearchClick = () => {
     if (searchInputRef.current) {
       searchInputRef.current.focus();
-      // Scroll to input slightly so it's clearly visible
       searchInputRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   };
@@ -214,19 +209,16 @@ export default function Home() {
 
   return (
     <div className="flex flex-col">
-      {/* Header / Hero Section */}
       <div className="relative px-4 pt-6 pb-20 rounded-b-[24px] shadow-md z-0 overflow-hidden">
-        {/* Dynamic Background */}
         <div
           className={`absolute inset-0 z-0 ${bannersLoading ? 'animate-pulse' : ''}`}
           style={{
             backgroundImage: headerBanner && !bannersLoading ? `url(${headerBanner.image_url})` : 'none',
             backgroundSize: 'cover',
             backgroundPosition: 'center',
-            backgroundColor: '#1e3a8a' // bg-primary fallback
+            backgroundColor: '#1e3a8a'
           }}
         >
-          {/* Overlay to ensure text readability without ruining image quality */}
           {!bannersLoading && <div className="absolute inset-0 bg-black/20"></div>}
         </div>
 
@@ -261,10 +253,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="px-2.5 -mt-12 pb-24 relative z-10">
-
-        {/* Quick Services Grid */}
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4 mb-4 mx-0">
           <div className="grid grid-cols-4 gap-1 sm:gap-2">
             {services.map((svc) => (
@@ -280,7 +269,6 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Banner Promo Slider */}
         {promos.length > 0 && (
           <div className="mb-5 px-1 relative rounded-2xl overflow-hidden shadow-sm h-32 sm:h-40 group cursor-pointer">
             {promos.map((promo, idx) => (
@@ -307,7 +295,6 @@ export default function Home() {
           </div>
         )}
 
-        {/* Search Bar - Moved Below Services */}
         <div className="mb-5 px-1">
           <div className="bg-white rounded-xl flex items-center px-3.5 py-3 shadow-sm border border-gray-100">
             <Search size={18} className="text-gray-400" />
@@ -322,14 +309,12 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Merchants List */}
         <div>
           <div className="mb-3">
             <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-50 text-orange-600 font-semibold text-[10px] mb-2.5">
               <Store size={12} /> Katalog UMKM Cikalong Wetan
             </div>
 
-            {/* Category Filter Tabs */}
             <div className="flex overflow-x-auto hide-scrollbar gap-1.5 pb-2 -mx-3 px-3">
               {dynamicCategories.map((cat) => (
                 <button
@@ -360,14 +345,13 @@ export default function Home() {
               ))
             ) : filteredMerchants.length > 0 ? (
               filteredMerchants.map((merchant) => {
-                // Ensure categories is an array
                 let merchantCats = [];
                 if (merchant.productCategories && Array.isArray(merchant.productCategories)) {
                   merchantCats = merchant.productCategories;
                 } else if (merchant.category) {
                   merchantCats = [merchant.category];
                 } else {
-                  merchantCats = ['UMKM']; // Fallback
+                  merchantCats = ['UMKM'];
                 }
 
                 return (
@@ -427,10 +411,20 @@ export default function Home() {
             )}
           </div>
         </div>
-
       </div>
 
-      {/* Floating Cart Bar (Slide In) */}
+      <button
+        onClick={() => {
+          navigate(`/merchant/eb21ba3d-3486-4aee-bc57-ed2e854297bc`);
+        }}
+        className={`fixed right-4 z-30 bg-accent text-primary p-4 rounded-full shadow-[0_4px_15px_rgba(250,204,21,0.5)] flex items-center justify-center hover:bg-yellow-400 hover:scale-105 active:scale-95 transition-all duration-300 ${cartCount > 0 ? 'bottom-36' : 'bottom-20'}`}
+        aria-label="Pesan Bebas / Custom"
+      >
+        <div className="flex items-center gap-2 relative">
+          <FileEdit size={24} strokeWidth={2.5} />
+        </div>
+      </button>
+
       {cartCount > 0 && (
         <div className="fixed bottom-20 left-0 right-0 max-w-md mx-auto p-4 z-40 animate-slideUp">
           <div

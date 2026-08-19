@@ -67,8 +67,9 @@ export default function ChatRoom() {
   }, []);
 
   useEffect(() => {
-    let merchantChannel;
-    
+    let merchantChannel = null;
+    let orderChannel = null;
+
     const initChat = async () => {
       setLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
@@ -111,13 +112,40 @@ export default function ChatRoom() {
       } else if (chatData.chat_type === 'courier') {
         const { data: cData } = await supabase.from('employees').select('full_name').eq('id', chatData.participant_id).maybeSingle();
         if (cData) setParticipantName(cData.full_name);
+
+        // Check if there are any active orders for this courier
+        const { data: activeOrders } = await supabase
+          .from('orders')
+          .select('id')
+          .eq('customer_id', user.id)
+          .eq('assigned_courier_id', chatData.participant_id)
+          .eq('is_deleted', false)
+          .not('status', 'in', '("completed","cancelled","rejected")')
+          .limit(1);
+
+        if (!activeOrders || activeOrders.length === 0) {
+          setIsChatClosed(true);
+        }
       }
 
       if (chatData.order_id) {
-        const { data: orderData } = await supabase.from('orders').select('status').eq('id', chatData.order_id).maybeSingle();
-        if (orderData && ['completed', 'cancelled', 'rejected'].includes(orderData.status)) {
+        const { data: orderData } = await supabase.from('orders').select('status').eq('id', chatData.order_id).eq('is_deleted', false).maybeSingle();
+        if (!orderData || ['completed', 'cancelled', 'rejected'].includes(orderData.status)) {
           setIsChatClosed(true);
         }
+
+        orderChannel = supabase
+          .channel(`order_status_${chatData.order_id}_${Date.now()}`)
+          .on(
+            'postgres_changes',
+            { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${chatData.order_id}` },
+            (payload) => {
+              if (payload.new.is_deleted || ['completed', 'cancelled', 'rejected'].includes(payload.new.status)) {
+                setIsChatClosed(true);
+              }
+            }
+          )
+          .subscribe();
       }
 
       // Fetch existing messages
@@ -183,10 +211,11 @@ export default function ChatRoom() {
       )
       .subscribe();
 
-      return () => {
-        supabase.removeChannel(channel);
-        if (merchantChannel) supabase.removeChannel(merchantChannel);
-      };
+    return () => {
+      supabase.removeChannel(channel);
+      if (merchantChannel) supabase.removeChannel(merchantChannel);
+      if (orderChannel) supabase.removeChannel(orderChannel);
+    };
     }, [id, navigate]);
 
   const handleSendMessage = async (e, customMetadata = null) => {

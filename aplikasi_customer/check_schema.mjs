@@ -5,9 +5,9 @@ const supabaseAnonKey = 'sb_publishable_XQdY7plphwCcoEEt7M1_bw_bdgpa0j6';
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 async function check() {
-  const { data: emp, error: empe } = await supabase.from('employees').select('*').limit(1);
-  console.log("Employees Data:", emp);
-  console.log("Employees Error:", empe);
+  const { data: mer, error: mere } = await supabase.from('merchants').select('*').eq('is_custom_order', true);
+  console.log("Merchants Data:", mer);
+  console.log("Merchants Error:", mere);
 }
 
 check();
