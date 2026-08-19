@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, Lock, Phone, ArrowRight, Loader2 } from 'lucide-react';
+import { User, Mail, Lock, Phone, Loader2 } from 'lucide-react';
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -86,133 +86,170 @@ export default function Auth() {
     }
   };
 
-  return (
-    <div className="max-w-md mx-auto min-h-screen bg-white flex flex-col sm:border-x sm:border-gray-200 shadow-xl">
-      <div className="flex-1 flex flex-col justify-center px-8 pb-12">
-        <div className="text-center mb-10">
-          <div className="w-16 h-16 bg-primary rounded-2xl mx-auto mb-6 flex items-center justify-center shadow-lg shadow-blue-200">
-            <span className="text-3xl font-bold text-accent">T</span>
-          </div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">
-            {isLogin ? 'Selamat Datang!' : 'Buat Akun Baru'}
-          </h1>
-          <p className="text-gray-500 mt-2">
-            {isLogin ? 'Masuk untuk menikmati layanan terbaik kami.' : 'Daftar sekarang dan mulai kemudahan bersama kami.'}
-          </p>
+  if (isLogin) {
+    return (
+      <div className="max-w-md mx-auto min-h-screen bg-white flex flex-col shadow-xl sm:border-x sm:border-gray-100 overflow-hidden">
+        {/* Top Illustration Section */}
+        <div className="w-full shadow-sm rounded-b-[40px] overflow-hidden">
+          <img 
+            src="/gambar-form-login.webp" 
+            alt="Login Illustration" 
+            className="w-full h-auto block" 
+          />
         </div>
-
-        {errorMsg && (
-          <div className="mb-6 p-4 bg-red-50 rounded-2xl border border-red-100">
-            <p className="text-sm text-red-600 text-center font-medium">{errorMsg}</p>
+        
+        {/* Form Section */}
+        <div className="flex-1 px-8 pt-6 pb-10 flex flex-col">
+          <div className="text-center mb-6">
+            <h1 className="text-3xl font-extrabold text-[#0a1930] mb-1 tracking-tight">Selamat Datang!</h1>
+            <p className="text-gray-400 text-sm font-medium">Masuk untuk menikmati layanan terbaik kami.</p>
           </div>
-        )}
-
-        <form onSubmit={handleAuth} className="space-y-5">
-          {!isLogin && (
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5 ml-1">Nama Lengkap</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400">
-                  <User size={18} />
-                </div>
-                <input
-                  type="text"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="block w-full pl-11 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
-                  placeholder="John Doe"
-                />
-              </div>
+          
+          {errorMsg && (
+            <div className="mb-4 p-3 bg-red-50 rounded-xl border border-red-100">
+              <p className="text-sm text-red-600 text-center font-medium">{errorMsg}</p>
             </div>
           )}
-
-          {!isLogin && (
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5 ml-1">Nomor WhatsApp / HP</label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400">
-                  <Phone size={18} />
-                </div>
-                <input
-                  type="tel"
-                  required
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="block w-full pl-11 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
-                  placeholder="08123456789"
-                />
-              </div>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5 ml-1">Email</label>
+          
+          <form onSubmit={handleAuth} className="space-y-4">
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400">
-                <Mail size={18} />
+                <Mail size={18} strokeWidth={2.5} />
               </div>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="block w-full pl-11 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
-                placeholder="johndoe@email.com"
+              <input 
+                type="email" 
+                required 
+                value={email} 
+                onChange={(e) => setEmail(e.target.value)} 
+                className="block w-full pl-11 pr-4 py-3.5 border-2 border-gray-200 rounded-full text-sm text-gray-800 placeholder-gray-400 focus:ring-4 focus:ring-[#2f6bf3]/20 focus:border-[#2f6bf3] outline-none transition-all font-medium" 
+                placeholder="Email" 
               />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5 ml-1">Password</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400">
-                <Lock size={18} />
+                <Lock size={18} strokeWidth={2.5} />
               </div>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="block w-full pl-11 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all outline-none"
-                placeholder="••••••••"
+              <input 
+                type="password" 
+                required 
+                value={password} 
+                onChange={(e) => setPassword(e.target.value)} 
+                className="block w-full pl-11 pr-4 py-3.5 border-2 border-gray-200 rounded-full text-sm text-gray-800 placeholder-gray-400 focus:ring-4 focus:ring-[#2f6bf3]/20 focus:border-[#2f6bf3] outline-none transition-all font-medium" 
+                placeholder="Password" 
               />
             </div>
-          </div>
-
-          {isLogin && (
-            <div className="flex justify-end mt-2">
-              <button type="button" className="text-sm font-semibold text-primary hover:text-blue-800 transition-colors">
+            
+            <div className="flex justify-center mt-3 mb-4">
+              <button type="button" className="text-xs font-semibold text-gray-400 hover:text-gray-600 border-b border-gray-300 pb-0.5 transition-colors">
                 Lupa Password?
               </button>
             </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full mt-6 bg-primary hover:bg-blue-800 text-white font-semibold py-4 rounded-2xl shadow-lg shadow-blue-200/50 transition-all flex items-center justify-center space-x-2 disabled:opacity-70 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <Loader2 className="animate-spin" size={20} />
-            ) : (
-              <>
-                <span>{isLogin ? 'Masuk Sekarang' : 'Daftar Akun'}</span>
-                <ArrowRight size={18} />
-              </>
-            )}
-          </button>
-        </form>
-
-        <div className="mt-8 text-center">
-          <p className="text-sm text-gray-600">
-            {isLogin ? "Belum punya akun?" : "Sudah punya akun?"}{' '}
-            <button
-              type="button"
-              onClick={() => setIsLogin(!isLogin)}
-              className="font-bold text-primary hover:text-blue-800 transition-colors"
+            
+            <button 
+              type="submit" 
+              disabled={loading} 
+              className="w-full bg-[#0a1930] hover:bg-[#0a1930]/90 text-white font-bold py-4 rounded-full shadow-lg transition-all flex items-center justify-center space-x-2"
             >
-              {isLogin ? 'Daftar di sini' : 'Masuk di sini'}
+              {loading ? <Loader2 className="animate-spin" size={20} /> : <span>Masuk Sekarang</span>}
+            </button>
+            
+            <button 
+              type="button" 
+              onClick={() => setIsLogin(false)}
+              className="w-full bg-[#2f6bf3] hover:bg-blue-600 text-white font-bold py-4 rounded-full shadow-lg transition-all mt-2"
+            >
+              Buat Akun Baru
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Register View
+  return (
+    <div className="max-w-md mx-auto min-h-screen bg-white flex flex-col shadow-xl sm:border-x sm:border-gray-100 relative overflow-hidden">
+      {/* Decorative Elements matching the reference */}
+      {/* Top Left/Center Yellow Blob */}
+      <div className="absolute -top-16 -left-16 w-64 h-64 bg-[#ffcc00] rounded-full opacity-90 blur-[1px]"></div>
+      {/* Top Right Blue Circle */}
+      <div className="absolute top-12 right-12 w-16 h-16 bg-[#2f6bf3] rounded-full"></div>
+      
+      {/* Bottom Right Navy Blob - Resized to not overlap text */}
+      <div className="absolute -bottom-20 -right-20 w-48 h-48 bg-[#0a1930] rounded-full"></div>
+      {/* Bottom Center Yellow Circle */}
+      <div className="absolute bottom-24 right-28 w-10 h-10 bg-[#ffcc00] rounded-full"></div>
+
+      <div className="flex-1 px-10 pt-32 pb-12 flex flex-col relative z-10">
+        <div className="text-center mb-10">
+          <h1 className="text-4xl font-extrabold text-[#0a1930] mb-2 tracking-tight">Buat Akun Baru</h1>
+          <p className="text-gray-400 text-sm font-medium">Daftar sekarang dan mulai kemudahan bersama kami.</p>
+        </div>
+        
+        {errorMsg && (
+          <div className="mb-4 p-3 bg-red-50 rounded-xl border border-red-100">
+            <p className="text-sm text-red-600 text-center font-medium">{errorMsg}</p>
+          </div>
+        )}
+        
+        <form onSubmit={handleAuth} className="space-y-6 flex-1">
+          <div className="relative">
+            <input 
+              type="text" 
+              required 
+              value={name} 
+              onChange={(e) => setName(e.target.value)} 
+              className="block w-full py-2 bg-transparent border-b-2 border-gray-100 text-sm text-gray-800 placeholder-gray-400 focus:border-[#2f6bf3] outline-none transition-colors font-medium" 
+              placeholder="Nama Lengkap" 
+            />
+          </div>
+          <div className="relative">
+            <input 
+              type="tel" 
+              required 
+              value={phone} 
+              onChange={(e) => setPhone(e.target.value)} 
+              className="block w-full py-2 bg-transparent border-b-2 border-gray-100 text-sm text-gray-800 placeholder-gray-400 focus:border-[#2f6bf3] outline-none transition-colors font-medium" 
+              placeholder="Nomor WhatsApp / HP" 
+            />
+          </div>
+          <div className="relative">
+            <input 
+              type="email" 
+              required 
+              value={email} 
+              onChange={(e) => setEmail(e.target.value)} 
+              className="block w-full py-2 bg-transparent border-b-2 border-gray-100 text-sm text-gray-800 placeholder-gray-400 focus:border-[#2f6bf3] outline-none transition-colors font-medium" 
+              placeholder="Email" 
+            />
+          </div>
+          <div className="relative">
+            <input 
+              type="password" 
+              required 
+              value={password} 
+              onChange={(e) => setPassword(e.target.value)} 
+              className="block w-full py-2 bg-transparent border-b-2 border-gray-100 text-sm text-gray-800 placeholder-gray-400 focus:border-[#2f6bf3] outline-none transition-colors font-medium" 
+              placeholder="Password" 
+            />
+          </div>
+
+          <div className="pt-8">
+            <button 
+              type="submit" 
+              disabled={loading} 
+              className="w-full bg-[#2f6bf3] hover:bg-blue-600 text-white font-bold py-4 rounded-full shadow-lg shadow-blue-200 transition-all flex items-center justify-center space-x-2"
+            >
+              {loading ? <Loader2 className="animate-spin" size={20} /> : <span>Daftar Akun</span>}
+            </button>
+          </div>
+        </form>
+        
+        <div className="mt-8 text-center pb-2">
+          <p className="text-xs text-gray-400 font-medium bg-white/80 inline-block px-3 py-1 rounded-full">
+            Sudah punya akun?{' '}
+            <button type="button" onClick={() => setIsLogin(true)} className="font-bold text-[#0a1930] hover:text-black">
+              Masuk di sini
             </button>
           </p>
         </div>
