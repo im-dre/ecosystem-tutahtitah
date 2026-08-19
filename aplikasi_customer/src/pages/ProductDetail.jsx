@@ -47,7 +47,7 @@ export default function ProductDetail() {
         if (productData.variants && Array.isArray(productData.variants)) {
           productData.variants.forEach(group => {
             if (group.options && group.options.length > 0) {
-              initialVariants[group.name] = group.options[0].label;
+              initialVariants[group.name] = '';
             }
           });
         }
@@ -106,7 +106,7 @@ export default function ProductDetail() {
     if (product.variants && Array.isArray(product.variants)) {
       product.variants.forEach(group => {
         if (group.options && group.options.length > 0) {
-          initialVariants[group.name] = group.options[0].label;
+          initialVariants[group.name] = '';
         }
       });
     }
@@ -153,6 +153,18 @@ export default function ProductDetail() {
   };
 
   const handleBuyNow = () => {
+    // Validate selections
+    for (const sel of selections) {
+      if (product.variants && Array.isArray(product.variants)) {
+        for (const group of product.variants) {
+          if (!sel.selectedVariants || !sel.selectedVariants[group.name]) {
+            toast.error(`Harap pilih ${group.name} sebelum memesan langsung`);
+            return;
+          }
+        }
+      }
+    }
+
     const directCheckoutItems = selections.map(sel => ({
       ...product,
       cart_item_id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
