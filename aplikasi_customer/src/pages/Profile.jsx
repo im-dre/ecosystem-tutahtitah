@@ -630,8 +630,18 @@ export default function Profile() {
             </div>
           </button>
           
-          {/* Hapus Akun */}
-          <div className="text-center mt-6 mb-4">
+          {/* Hapus Akun & Tour */}
+          <div className="text-center mt-6 mb-4 flex flex-col items-center gap-2">
+            <button 
+              onClick={() => {
+                if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(50);
+                localStorage.removeItem('tutah_has_seen_tour');
+                navigate('/');
+              }}
+              className="text-xs font-bold text-primary hover:text-blue-700 transition-colors active:scale-95 px-4 py-2 select-none"
+            >
+              Ulangi Tour Fitur Aplikasi
+            </button>
             <button 
               onClick={() => {
                 if (window.navigator && window.navigator.vibrate) window.navigator.vibrate(50);
@@ -641,7 +651,7 @@ export default function Profile() {
             >
               Pengajuan Hapus Akun
             </button>
-            <p className="text-[10px] text-gray-300 mt-4 font-medium">TutahTitah App v1.0.0 (Build 24)</p>
+            <p className="text-[10px] text-gray-300 mt-2 font-medium">TutahTitah App v1.0.0 (Build 24)</p>
           </div>
         </div>
       </div>

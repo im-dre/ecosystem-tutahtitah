@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import useSWR from 'swr';
 import toast from 'react-hot-toast';
+import FeatureTour from '../components/FeatureTour';
 
 const getMerchantStatus = (merchant, currentTime) => {
   if (!merchant || !merchant.operating_hours || !Array.isArray(merchant.operating_hours)) {
@@ -44,6 +45,19 @@ export default function Home() {
   const { cartItems } = useCart();
   const [currentPromoIndex, setCurrentPromoIndex] = useState(0);
   const searchInputRef = useRef(null);
+  const [runTour, setRunTour] = useState(false);
+
+  useEffect(() => {
+    const hasSeenTour = localStorage.getItem('tutah_has_seen_tour');
+    if (!hasSeenTour) {
+      const timer = setTimeout(() => {
+        setRunTour(true);
+        // Tandai sudah melihat tour supaya tidak muncul terus menerus
+        localStorage.setItem('tutah_has_seen_tour', 'true');
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   const cartCount = cartItems.reduce((total, item) => total + item.qty, 0);
   const cartTotal = cartItems.reduce((total, item) => {
@@ -279,6 +293,7 @@ export default function Home() {
             </button>
             <button
               onClick={() => navigate('/profile')}
+              id="tour-nav-profile"
               className="w-9 h-9 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-white relative active:scale-95 transition-transform"
             >
               <User size={18} />
@@ -288,7 +303,7 @@ export default function Home() {
       </div>
 
       <div className="px-2.5 -mt-12 pb-24 relative z-10">
-        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4 mb-4 mx-0">
+        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4 mb-4 mx-0" id="tour-services">
           <div className="grid grid-cols-4 gap-1 sm:gap-2">
             {services.map((svc) => (
               <div
@@ -333,7 +348,7 @@ export default function Home() {
           const customMerchant = merchants.find(m => m.is_custom_order);
           if (!customMerchant) return null;
           return (
-            <div className="mb-5 px-1">
+            <div className="mb-5 px-1" id="tour-custom-order">
               <div 
                 onClick={() => navigate(`/merchant/${customMerchant.id}`)}
                 className="relative overflow-hidden rounded-2xl cursor-pointer shadow-sm border border-blue-100 group active:scale-95 transition-all bg-gradient-to-br from-blue-50 to-indigo-50"
@@ -370,7 +385,7 @@ export default function Home() {
           );
         })()}
 
-        <div className="mb-6 px-1">
+        <div className="mb-6 px-1" id="tour-search">
           <div className="bg-white rounded-xl flex items-center px-3.5 py-3 shadow-sm border border-gray-100">
             <Search size={18} className="text-gray-400" />
             <input
@@ -570,6 +585,7 @@ export default function Home() {
           </div>
         </div>
       )}
+      <FeatureTour run={runTour} setRun={setRunTour} />
     </div>
   );
 }

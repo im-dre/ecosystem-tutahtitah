@@ -29,6 +29,7 @@ export default function MainLayout() {
             <Link
               key={item.name}
               to={item.path}
+              id={`tour-nav-${item.path === '/' ? 'home' : item.path.substring(1)}`}
               className={`flex flex-col items-center justify-center space-y-1 transition-colors duration-200 relative ${
                 isActive ? 'text-primary' : 'text-gray-400 hover:text-gray-600'
               }`}

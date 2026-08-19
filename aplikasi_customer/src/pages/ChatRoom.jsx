@@ -679,7 +679,7 @@ export default function ChatRoom() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 max-w-md mx-auto sm:border-x sm:border-gray-200 overflow-hidden relative">
+    <div className="flex flex-col h-[100dvh] bg-slate-50 max-w-md mx-auto sm:border-x sm:border-gray-200 overflow-hidden relative">
       {/* Background pattern */}
       <div className="absolute inset-0 z-0 opacity-[0.08] pointer-events-none" 
            style={{ 
@@ -1063,14 +1063,14 @@ export default function ChatRoom() {
             <Paperclip size={20} className={showAttachMenu ? 'rotate-45 transition-transform' : 'transition-transform'} />
           </button>
 
-          <form onSubmit={(e) => handleSendMessage(e)} className="flex-1 flex gap-2">
-            <div className="flex-1 bg-gray-50 border border-gray-200 hover:border-gray-300 rounded-full flex items-center px-4 py-2.5 transition-colors">
+          <form onSubmit={(e) => handleSendMessage(e)} className="flex-1 flex gap-2 min-w-0">
+            <div className="flex-1 bg-gray-50 border border-gray-200 hover:border-gray-300 rounded-full flex items-center px-4 py-2.5 transition-colors min-w-0">
               <input 
                 type="text" 
                 value={newMessage}
                 onChange={(e) => setNewMessage(e.target.value)}
                 placeholder="Ketik pesan..."
-                className="flex-1 bg-transparent border-none outline-none text-sm text-gray-800 font-medium"
+                className="flex-1 bg-transparent border-none outline-none text-sm text-gray-800 font-medium min-w-0"
               />
             </div>
             <button 
