@@ -90,11 +90,17 @@ export default function Auth() {
     return (
       <div className="max-w-md mx-auto min-h-screen bg-white flex flex-col shadow-xl sm:border-x sm:border-gray-100 overflow-hidden">
         {/* Top Illustration Section */}
-        <div className="w-full shadow-sm rounded-b-[40px] overflow-hidden">
+        <div className="w-full h-[32vh] min-h-[220px] max-h-[280px] shadow-sm rounded-b-[40px] relative overflow-hidden flex justify-center items-end bg-[#0a1930]">
+          {/* Blurred Background to blend seamlessly */}
+          <div 
+            className="absolute inset-0 bg-cover bg-center blur-2xl scale-150 opacity-60"
+            style={{ backgroundImage: `url('/gambar-form-login.webp')` }}
+          ></div>
+          {/* Main Image (Not cropped) */}
           <img 
             src="/gambar-form-login.webp" 
             alt="Login Illustration" 
-            className="w-full h-auto block" 
+            className="h-full w-full object-contain object-bottom relative z-10" 
           />
         </div>
         
