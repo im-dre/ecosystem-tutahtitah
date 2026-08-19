@@ -97,37 +97,57 @@ export default function JastipCatalog() {
         .select('*')
         .in('status', ['verified', 'published', 'VERIFIED', 'PUBLISHED', 'ACTIVE', 'active']);
 
-      // 2. Fetch Products
-      const merchantIds = merchantsData?.map(m => m.id) || [];
-      const { data: productsData, error: productsError } = await supabase
-        .from('products')
-        .select('id, name, category, merchant_id, price, image_url, variants')
-        .in('merchant_id', merchantIds)
-        .eq('is_available', true);
-
       if (!merchantsError && merchantsData) {
-        if (!productsError && productsData) {
-          setAllProducts(productsData);
+        const merchantIds = merchantsData.map(m => m.id);
+        
+        let productsData = [];
+        let productsError = null;
 
-          // Extract unique categories across all available products
-          const allCategories = [...new Set(productsData.map(p => p.category).filter(Boolean))];
-          setDynamicCategories(['Semua Toko', ...allCategories]);
+        if (merchantIds.length > 0) {
+          const [prodRes, ratingsRes, followersRes] = await Promise.all([
+            supabase.from('products').select('id, name, category, merchant_id, price, image_url, variants, rating_score, favorite_count, total_ratings').in('merchant_id', merchantIds).eq('is_available', true),
+            supabase.from('ratings').select('target_id, rating').eq('target_type', 'merchant'),
+            supabase.from('merchant_followers').select('merchant_id')
+          ]);
 
-          // Map categories to individual merchants
-          const merchantsWithCategories = merchantsData.map(merchant => {
-            const mProducts = productsData.filter(p => p.merchant_id === merchant.id);
-            const mCategories = [...new Set(mProducts.map(p => p.category).filter(Boolean))];
-            return {
-              ...merchant,
-              productCategories: mCategories
-            };
-          });
+          productsData = prodRes.data || [];
+          productsError = prodRes.error;
+          
+          const ratingsData = ratingsRes.data || [];
+          const followersData = followersRes.data || [];
 
-          // Sort alphabetically
-          merchantsWithCategories.sort((a, b) => a.name.localeCompare(b.name));
-          setMerchants(merchantsWithCategories.filter(m => !m.is_custom_order));
+          if (!productsError) {
+            setAllProducts(productsData);
+
+            // Extract unique categories across all available products
+            const allCategories = [...new Set(productsData.map(p => p.category).filter(Boolean))];
+            setDynamicCategories(['Semua Toko', ...allCategories]);
+
+            // Map categories to individual merchants and add ratings/followers
+            const merchantsWithCategories = merchantsData.map(merchant => {
+              const mProducts = productsData.filter(p => p.merchant_id === merchant.id);
+              const mCategories = [...new Set(mProducts.map(p => p.category).filter(Boolean))];
+              
+              const mRatings = ratingsData.filter(r => r.target_id === merchant.id);
+              const avg = mRatings.length > 0 ? (mRatings.reduce((sum, r) => sum + r.rating, 0) / mRatings.length).toFixed(1) : 0;
+              const followers = followersData.filter(f => f.merchant_id === merchant.id).length;
+
+              return {
+                ...merchant,
+                productCategories: mCategories,
+                ratingStats: { average: avg, total: mRatings.length },
+                followerCount: followers
+              };
+            });
+
+            // Sort alphabetically
+            merchantsWithCategories.sort((a, b) => a.name.localeCompare(b.name));
+            setMerchants(merchantsWithCategories.filter(m => !m.is_custom_order));
+          } else {
+            setMerchants(merchantsData.filter(m => !m.is_custom_order));
+          }
         } else {
-          setMerchants(merchantsData.filter(m => !m.is_custom_order));
+          setMerchants([]);
         }
       }
       setLoading(false);
@@ -365,10 +385,22 @@ export default function JastipCatalog() {
                           <Clock size={8} /> {storeStatus.text}
                         </div>
                       </div>
-                      <div className="flex gap-1 flex-wrap mb-1.5">
-                        {merchantCats.slice(0, 2).map((cat, idx) => (
-                          <span key={idx} className="bg-blue-50 text-blue-700 text-[8px] font-medium px-1.5 py-0.5 rounded uppercase border border-blue-100">{cat}</span>
-                        ))}
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <div className="flex gap-1 flex-wrap">
+                          {merchantCats.slice(0, 2).map((cat, idx) => (
+                            <span key={idx} className="bg-blue-50 text-blue-700 text-[8px] font-medium px-1.5 py-0.5 rounded uppercase border border-blue-100">{cat}</span>
+                          ))}
+                        </div>
+                        <div className="flex items-center gap-1.5 border-l border-gray-200 pl-2">
+                          <div className="flex items-center gap-0.5 text-[9px] font-bold text-yellow-600">
+                            <Star size={10} className="fill-yellow-500" />
+                            {merchant.ratingStats?.average || '0.0'}
+                          </div>
+                          <div className="flex items-center gap-0.5 text-[9px] font-medium text-gray-500">
+                            <Heart size={10} className="text-gray-400" />
+                            {merchant.followerCount || 0}
+                          </div>
+                        </div>
                       </div>
                       <p className="text-[10px] sm:text-xs text-gray-500 font-medium flex items-center gap-1 truncate">
                         <MapPin size={10} className="shrink-0 text-red-500" />

@@ -24,6 +24,28 @@ const formatDateGroup = (dateString) => {
   }
 };
 
+const getFinalPrice = (item) => {
+  let price = item.price;
+  if (item.variants && item.selectedVariants) {
+    let variantTotalPrice = 0;
+    let hasPricedVariant = false;
+    item.variants.forEach(group => {
+      if (group.has_price) {
+        const selectedLabel = item.selectedVariants[group.name];
+        const option = group.options.find(opt => opt.label === selectedLabel);
+        if (option) {
+          variantTotalPrice += (parseFloat(option.price) || 0);
+          hasPricedVariant = true;
+        }
+      }
+    });
+    if (hasPricedVariant) {
+      price = variantTotalPrice;
+    }
+  }
+  return parseFloat(price) || 0;
+};
+
 export default function ChatRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -112,20 +134,6 @@ export default function ChatRoom() {
       } else if (chatData.chat_type === 'courier') {
         const { data: cData } = await supabase.from('employees').select('full_name').eq('id', chatData.participant_id).maybeSingle();
         if (cData) setParticipantName(cData.full_name);
-
-        // Check if there are any active orders for this courier
-        const { data: activeOrders } = await supabase
-          .from('orders')
-          .select('id')
-          .eq('customer_id', user.id)
-          .eq('assigned_courier_id', chatData.participant_id)
-          .eq('is_deleted', false)
-          .not('status', 'in', '("completed","cancelled","rejected")')
-          .limit(1);
-
-        if (!activeOrders || activeOrders.length === 0) {
-          setIsChatClosed(true);
-        }
       }
 
       if (chatData.order_id) {
@@ -224,15 +232,35 @@ export default function ChatRoom() {
 
     let finalMetadata = customMetadata;
     if (!finalMetadata && stagedAttachments.length > 0) {
-      finalMetadata = {
-        type: 'products',
-        items: stagedAttachments.map(p => ({
-          id: p.id,
-          name: p.name,
-          price: p.price,
-          image_url: p.image_url
-        }))
-      };
+      const firstStaged = stagedAttachments[0];
+      if (firstStaged.type === 'order') {
+        finalMetadata = {
+          type: 'order',
+          id: firstStaged.id,
+          status: firstStaged.status,
+          total_price: firstStaged.total_price,
+          total_amount: firstStaged.total_amount,
+          delivery_fee: firstStaged.delivery_fee,
+          tipe_layanan: firstStaged.tipe_layanan,
+          items: firstStaged.items,
+          merchant_name: firstStaged.merchant_name,
+        };
+      } else if (firstStaged.type === 'image') {
+        finalMetadata = {
+          type: 'image',
+          url: firstStaged.url
+        };
+      } else {
+        finalMetadata = {
+          type: 'products',
+          items: stagedAttachments.map(p => ({
+            id: p.id,
+            name: p.name,
+            price: p.price,
+            image_url: p.image_url
+          }))
+        };
+      }
     }
 
     const content = newMessage.trim() || (finalMetadata ? 'Mengirim lampiran...' : '');
@@ -292,20 +320,63 @@ export default function ChatRoom() {
     if (!chatInfo || (chatInfo.chat_type !== 'merchant' && chatInfo.chat_type !== 'support')) return;
     
     setIsUploading(true);
-    let query = supabase.from('orders').select('*').eq('customer_id', user.id).order('created_at', { ascending: false });
-    if (chatInfo.chat_type === 'merchant') {
-      query = query.eq('merchant_id', chatInfo.participant_id);
+    const { data: profile } = await supabase.from('customers').select('id').eq('auth_id', user.id).maybeSingle();
+    if (!profile) {
+      setIsUploading(false);
+      return;
     }
+
+    let query = supabase.from('orders').select('*, merchants(name, logo_url)').eq('customer_id', profile.id).order('created_at', { ascending: false });
+    
     const { data } = await query;
-    if (data) setCustomerOrders(data);
+    if (data) {
+      let filteredOrders = data;
+      
+      if (chatInfo.chat_type === 'merchant') {
+        const merchantId = chatInfo.participant_id;
+        
+        filteredOrders = data.filter(order => {
+          if (order.merchant_id === merchantId) return true;
+          if (order.items && Array.isArray(order.items)) {
+            return order.items.some(item => (item.merchant_id || order.merchant_id) === merchantId);
+          }
+          return false;
+        }).map(order => {
+          const items = order.items || [];
+          const hasMixedItems = items.some(item => (item.merchant_id || order.merchant_id) !== merchantId);
+          
+          if (hasMixedItems) {
+            const filteredItems = items.filter(item => (item.merchant_id || order.merchant_id) === merchantId);
+            const newTotalPrice = filteredItems.reduce((acc, item) => {
+              const price = getFinalPrice(item);
+              const qty = item.qty || item.quantity || 1;
+              return acc + (price * qty);
+            }, 0);
+            
+            return {
+              ...order,
+              items: filteredItems,
+              total_price: newTotalPrice,
+              is_partial: true
+            };
+          }
+          return order;
+        });
+      }
+      setCustomerOrders(filteredOrders);
+    }
     setIsUploading(false);
     setShowOrderModal(true);
   };
 
   const stageProduct = (product) => {
-    if (!stagedAttachments.find(p => p.id === product.id)) {
-      setStagedAttachments(prev => [...prev, product]);
-    }
+    setStagedAttachments(prev => {
+      const prevProducts = prev.filter(p => !p.type || p.type === 'product');
+      if (!prevProducts.find(p => p.id === product.id)) {
+        return [...prevProducts, { ...product, type: 'product' }];
+      }
+      return prevProducts;
+    });
     setShowProductModal(false);
   };
   
@@ -314,13 +385,18 @@ export default function ChatRoom() {
   };
 
   const sendOrderAttachment = (order) => {
-    handleSendMessage(null, {
+    setStagedAttachments([{
       type: 'order',
       id: order.id,
       status: order.status,
       total_price: order.total_price,
-      items: order.items
-    });
+      total_amount: order.total_amount,
+      delivery_fee: order.delivery_fee,
+      tipe_layanan: order.tipe_layanan,
+      items: order.items,
+      merchant_name: order.merchant_name || order.merchants?.name,
+    }]);
+    setShowOrderModal(false);
   };
 
   const handleImageUpload = async (e) => {
@@ -328,7 +404,7 @@ export default function ChatRoom() {
     if (!file) return;
     setShowAttachMenu(false);
     
-    const loadingToast = toast.loading('Mengunggah gambar...');
+    const loadingToast = toast.loading('Menyiapkan gambar...');
     setIsUploading(true);
     
     try {
@@ -343,14 +419,15 @@ export default function ChatRoom() {
 
       const { data } = supabase.storage.from('chat-images').getPublicUrl(fileName);
       
-      handleSendMessage(null, {
+      setStagedAttachments([{
         type: 'image',
+        id: fileName,
         url: data.publicUrl
-      });
-      toast.success('Gambar terkirim', { id: loadingToast });
+      }]);
+      toast.success('Gambar disiapkan', { id: loadingToast });
     } catch (err) {
       console.error(err);
-      toast.error('Gagal mengunggah gambar', { id: loadingToast });
+      toast.error('Gagal menyiapkan gambar', { id: loadingToast });
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -486,6 +563,120 @@ export default function ChatRoom() {
       if (chatInfo.order_id) subtitle = `Mengantar Pesanan #${chatInfo.order_id}`;
     }
   }
+
+  const getServiceIcon = (tipe_layanan) => {
+    switch (tipe_layanan) {
+      case 'Belanja': return <img src="/icon-belanja.webp" alt="Belanja" className="w-6 h-6 object-contain drop-shadow-sm" />;
+      case 'Jastip': return <ShoppingBag size={18} className="text-gray-800" strokeWidth={2.5} />;
+      case 'Antar Jemput': return <img src="/icon-ojek.webp" alt="Antar Jemput" className="w-6 h-6 object-contain drop-shadow-sm" />;
+      case 'Kirim Barang': return <img src="/icon-kirim-barang.webp" alt="Kirim Barang" className="w-6 h-6 object-contain drop-shadow-sm" />;
+      default: return <Package size={18} className="text-gray-800" strokeWidth={2.5} />;
+    }
+  };
+
+  const getOrderStatus = (status) => {
+    switch (status) {
+      case 'pending': return { text: 'Tunggu konfirmasi admin', color: 'bg-orange-50 text-orange-600 border-orange-200' };
+      case 'admin_accepted': return { text: 'Pesanan Diterima', color: 'bg-blue-50 text-blue-600 border-blue-200' };
+      case 'merchant_accepted': return { text: 'Belanjaan disiapkan penjual', color: 'bg-indigo-50 text-indigo-600 border-indigo-200' };
+      case 'process': return { text: 'Sedang Diproses', color: 'bg-purple-50 text-purple-600 border-purple-200' };
+      case 'on_delivery': return { text: 'Dalam Pengiriman', color: 'bg-teal-50 text-teal-600 border-teal-200' };
+      case 'rejected':
+      case 'cancelled': return { text: 'Dibatalkan', color: 'bg-red-50 text-red-600 border-red-200' };
+      case 'completed': return { text: 'Selesai', color: 'bg-green-50 text-green-600 border-green-200' };
+      default: return { text: status, color: 'bg-gray-50 text-gray-600 border-gray-200' };
+    }
+  };
+
+  const getOrderTotalAmount = (order) => {
+    if (['Antar Jemput', 'Kirim Barang'].includes(order.tipe_layanan)) {
+      return order.delivery_fee; 
+    }
+    
+    const items = order.items || [];
+    const isItemCustom = (item) => item.is_custom || !item.price || item.price === 0;
+    const customItemsCount = items.filter(item => isItemCustom(item)).length;
+    const totalNonCustom = items.reduce((acc, item) => !isItemCustom(item) ? acc + (getFinalPrice(item) * (item.qty || item.quantity || 1)) : acc, 0);
+
+    if (order.total_price && order.total_price > 0) {
+      return parseFloat(order.total_price) + (order.delivery_fee || 0);
+    } else if (customItemsCount === 0 && totalNonCustom > 0) {
+      return totalNonCustom + (order.delivery_fee || 0);
+    }
+    return null;
+  };
+
+  const renderOrderCard = (order) => {
+    const isJasaOnly = ['Antar Jemput', 'Kirim Barang'].includes(order.tipe_layanan);
+    const { text: statusText, color: statusColor } = getOrderStatus(order.status);
+    const totalAmount = getOrderTotalAmount(order);
+    
+    return (
+      <button type="button" key={order.id} onClick={() => sendOrderAttachment(order)} className="w-full text-left bg-white px-4 py-4 border border-gray-100 rounded-2xl shadow-sm hover:shadow-md hover:border-primary/30 active:bg-gray-50 transition-all duration-200 mb-3 relative group">
+        <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-3">
+          <div className="flex gap-3 items-center">
+            <div className="w-8 h-8 bg-gray-100/80 rounded-xl flex items-center justify-center shrink-0">
+              {getServiceIcon(order.tipe_layanan)}
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5 text-left">Pesanan {order.tipe_layanan}</p>
+              <div className="flex items-center gap-1.5">
+                <p className="text-[10px] font-medium text-gray-400 tracking-tight">#{order.id.toString().substring(0, 8)}</p>
+                <span className="w-1 h-1 rounded-full bg-gray-300"></span>
+                <p className="text-[10px] text-gray-400 font-medium">{dayjs(order.created_at).format('D MMM YYYY, HH:mm')}</p>
+              </div>
+            </div>
+          </div>
+          <div className={`px-2.5 py-1 rounded-full text-[9px] font-bold border shrink-0 ml-2 ${statusColor}`}>
+            <span className="text-center leading-tight">{statusText}</span>
+          </div>
+        </div>
+        
+        <div className="space-y-2 mb-3">
+          {(order.items || []).slice(0, 1).map((item, idx) => (
+            <div key={idx} className="flex gap-3 items-center">
+              {!isJasaOnly && item.image_url && (
+                <img src={item.image_url} alt={item.name} className="w-10 h-10 rounded-lg object-cover bg-gray-50 border border-gray-100 shrink-0" />
+              )}
+              <div className="flex-1 min-w-0 text-left">
+                <p className="text-xs text-gray-800 font-medium line-clamp-1">{isJasaOnly ? item.name : `${item.qty}x ${item.name}`}</p>
+              </div>
+            </div>
+          ))}
+          {(order.items || []).length > 1 && (
+            <p className="text-[10px] text-gray-400 font-medium italic mt-1 pt-1 border-t border-gray-50 text-left">
+              ... (+ {(order.items || []).length - 1} produk lainnya)
+            </p>
+          )}
+        </div>
+        
+        <div className="flex justify-between items-center pt-3 mt-3 border-t border-dashed border-gray-200">
+          <div className="flex flex-col text-left">
+            {isJasaOnly ? (
+              <>
+                <span className="text-[10px] font-bold text-gray-400">Total Ongkir</span>
+                {totalAmount !== null && totalAmount !== undefined ? (
+                  <span className="text-sm font-bold text-primary">Rp {totalAmount.toLocaleString('id-ID')}</span>
+                ) : (
+                  <span className="text-[11px] font-semibold text-orange-500 italic">Admin belum set ongkir</span>
+                )}
+              </>
+            ) : (
+              <>
+                <span className="text-[10px] font-bold text-gray-400">Total Belanja <span className="font-medium italic">(termasuk ongkir)</span></span>
+                {totalAmount !== null ? (
+                  <span className="text-sm font-bold text-primary">Rp {totalAmount.toLocaleString('id-ID')}</span>
+                ) : (
+                  <span className="text-[11px] font-semibold text-orange-500 italic">Menyusul</span>
+                )}
+              </>
+            )}
+          </div>
+          <span className="text-[10px] text-primary font-bold bg-primary/10 px-3 py-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">Pilih</span>
+        </div>
+      </button>
+    );
+  };
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 max-w-md mx-auto sm:border-x sm:border-gray-200 overflow-hidden relative">
@@ -683,14 +874,63 @@ export default function ChatRoom() {
                       {msg.metadata && msg.metadata.type === 'order' && (
                         <div 
                           onClick={() => navigate(`/order/${msg.metadata.id}`)}
-                          className={`mt-1.5 ${isMe ? 'bg-blue-600/20 hover:bg-blue-600/30' : 'bg-gray-50 hover:bg-gray-100'} rounded-xl p-2.5 cursor-pointer active:scale-95 transition-all`}
+                          className={`mt-1.5 ${isMe ? 'bg-blue-600/20 hover:bg-blue-600/30' : 'bg-gray-50 hover:bg-gray-100'} rounded-xl p-3 cursor-pointer active:scale-95 transition-all text-left flex flex-col`}
                         >
-                          <div className="flex justify-between items-center mb-1">
-                            <span className={`text-[9px] font-bold ${isMe ? 'text-blue-100' : 'text-gray-500'}`}>ORDER #{msg.metadata.id}</span>
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white text-blue-600 uppercase shadow-sm border border-black/5">{msg.metadata.status}</span>
+                          <div className={`flex justify-between items-start pb-2 mb-2 border-b ${isMe ? 'border-white/10' : 'border-black/5'}`}>
+                            <div className="flex flex-col">
+                              <p className={`text-[9px] font-bold uppercase tracking-wider mb-0.5 ${isMe ? 'text-blue-100' : 'text-gray-500'}`}>Pesanan {msg.metadata.tipe_layanan || ''}</p>
+                              <div className="flex items-center gap-1">
+                                <p className={`text-[9px] font-medium tracking-tight ${isMe ? 'text-white/70' : 'text-gray-400'}`}>#{msg.metadata.id.toString().substring(0, 8)}</p>
+                              </div>
+                            </div>
+                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase shadow-sm border ${isMe ? 'bg-white/10 text-white border-white/20' : 'bg-white text-gray-600 border-black/5'}`}>
+                              {msg.metadata.status}
+                            </span>
                           </div>
-                          <p className={`text-xs font-bold mb-0.5 ${isMe ? 'text-white' : 'text-gray-800'}`}>{msg.metadata.items?.length || 0} Items</p>
-                          <p className={`text-xs font-bold ${isMe ? 'text-blue-100' : 'text-primary'}`}>Rp {msg.metadata.total_price?.toLocaleString('id-ID')}</p>
+                          
+                          <div className="flex items-center gap-2 mb-2">
+                            {msg.metadata.items && msg.metadata.items[0]?.image_url && !['Antar Jemput', 'Kirim Barang'].includes(msg.metadata.tipe_layanan) && (
+                              <img src={msg.metadata.items[0].image_url} alt="" className="w-8 h-8 rounded-md object-cover bg-white/50 border border-black/5 shrink-0" />
+                            )}
+                            <div className="overflow-hidden flex-1">
+                              <p className={`text-[10px] font-medium line-clamp-1 ${isMe ? 'text-white' : 'text-gray-800'}`}>
+                                {['Antar Jemput', 'Kirim Barang'].includes(msg.metadata.tipe_layanan) 
+                                  ? (msg.metadata.items && msg.metadata.items[0]?.name) || msg.metadata.tipe_layanan 
+                                  : msg.metadata.items && msg.metadata.items.length > 0 ? `${msg.metadata.items[0].qty || msg.metadata.items[0].quantity || 1}x ${msg.metadata.items[0].name}` : msg.metadata.tipe_layanan}
+                              </p>
+                              {msg.metadata.items && msg.metadata.items.length > 1 && (
+                                <p className={`text-[9px] italic mt-0.5 ${isMe ? 'text-blue-200' : 'text-gray-500'}`}>
+                                  ... (+ {msg.metadata.items.length - 1} produk lainnya)
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className={`flex justify-between items-center pt-2 mt-auto border-t border-dashed ${isMe ? 'border-white/20' : 'border-gray-300'}`}>
+                            {(() => {
+                              const totalAmt = getOrderTotalAmount(msg.metadata);
+                              const isJasa = ['Antar Jemput', 'Kirim Barang'].includes(msg.metadata.tipe_layanan);
+                              return isJasa ? (
+                                <>
+                                  <span className={`text-[9px] font-bold ${isMe ? 'text-blue-200' : 'text-gray-400'}`}>Total Ongkir</span>
+                                  {totalAmt !== null && totalAmt !== undefined ? (
+                                    <span className={`text-xs font-bold ${isMe ? 'text-white' : 'text-primary'}`}>Rp {totalAmt.toLocaleString('id-ID')}</span>
+                                  ) : (
+                                    <span className={`text-[9px] font-semibold italic ${isMe ? 'text-blue-200' : 'text-orange-500'}`}>Admin belum set ongkir</span>
+                                  )}
+                                </>
+                              ) : (
+                                <>
+                                  <span className={`text-[9px] font-bold ${isMe ? 'text-blue-200' : 'text-gray-400'}`}>Total Belanja <span className="font-medium italic">(termasuk ongkir)</span></span>
+                                  {totalAmt !== null ? (
+                                    <span className={`text-xs font-bold ${isMe ? 'text-white' : 'text-primary'}`}>Rp {totalAmt.toLocaleString('id-ID')}</span>
+                                  ) : (
+                                    <span className={`text-[9px] font-semibold italic ${isMe ? 'text-blue-200' : 'text-orange-500'}`}>Menyusul</span>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
                         </div>
                       )}
                       <div className="flex items-center justify-end gap-1.5 mt-1.5">
@@ -734,18 +974,46 @@ export default function ChatRoom() {
         {/* Staging Area */}
         {stagedAttachments.length > 0 && (
           <div className="px-3 pt-3 pb-1 flex gap-2 overflow-x-auto no-scrollbar">
-            {stagedAttachments.map(p => (
-              <div key={p.id} className="relative bg-gray-50 border border-gray-200 rounded-lg p-1.5 flex gap-2 items-center min-w-[140px] max-w-[200px] shrink-0 animate-fadeIn">
-                <img src={p.image_url || '/placeholder.png'} className="w-8 h-8 rounded-md object-cover bg-gray-200" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-bold text-gray-700 line-clamp-1">{p.name}</p>
-                  <p className="text-[9px] text-primary font-semibold">Rp {p.price?.toLocaleString('id-ID')}</p>
-                </div>
-                <button type="button" onClick={() => removeStagedProduct(p.id)} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-transform">
-                  <X size={12} />
-                </button>
-              </div>
-            ))}
+            {stagedAttachments.map(p => {
+              if (p.type === 'order') {
+                return (
+                  <div key={p.id} className="relative bg-blue-50 border border-blue-200 rounded-lg p-2 flex gap-2 items-center min-w-[140px] max-w-[220px] shrink-0 animate-fadeIn">
+                    <div className="w-8 h-8 rounded-md bg-white flex items-center justify-center shrink-0 border border-blue-100">
+                      <Receipt size={16} className="text-blue-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-bold text-blue-800 line-clamp-1">Pesanan #{p.id.toString().substring(0,8)}</p>
+                      <p className="text-[9px] text-blue-600 font-semibold truncate">{p.merchant_name || p.tipe_layanan || 'Detail Pesanan'}</p>
+                    </div>
+                    <button type="button" onClick={() => removeStagedProduct(p.id)} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-transform">
+                      <X size={12} />
+                    </button>
+                  </div>
+                );
+              } else if (p.type === 'image') {
+                return (
+                  <div key={p.id} className="relative bg-gray-50 border border-gray-200 rounded-lg p-1.5 flex gap-2 items-center min-w-[60px] shrink-0 animate-fadeIn">
+                    <img src={p.url} className="w-12 h-12 rounded-md object-cover bg-gray-200" />
+                    <button type="button" onClick={() => removeStagedProduct(p.id)} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-transform">
+                      <X size={12} />
+                    </button>
+                  </div>
+                );
+              } else {
+                return (
+                  <div key={p.id} className="relative bg-gray-50 border border-gray-200 rounded-lg p-1.5 flex gap-2 items-center min-w-[140px] max-w-[200px] shrink-0 animate-fadeIn">
+                    <img src={p.image_url || '/placeholder.png'} className="w-8 h-8 rounded-md object-cover bg-gray-200" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-bold text-gray-700 line-clamp-1">{p.name}</p>
+                      <p className="text-[9px] text-primary font-semibold">Rp {p.price?.toLocaleString('id-ID')}</p>
+                    </div>
+                    <button type="button" onClick={() => removeStagedProduct(p.id)} className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center shadow-sm hover:scale-110 transition-transform">
+                      <X size={12} />
+                    </button>
+                  </div>
+                );
+              }
+            })}
           </div>
         )}
         
@@ -755,25 +1023,25 @@ export default function ChatRoom() {
             <div className="absolute bottom-[60px] left-3 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 w-48 animate-slideUp">
               {chatInfo?.chat_type === 'merchant' && (
                 <button onClick={handleOpenProducts} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 rounded-xl transition-colors text-left active:bg-gray-100">
-                  <div className="w-8 h-8 rounded-full bg-orange-100 text-orange-600 flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-900 flex items-center justify-center shrink-0">
                     <Package size={16} />
                   </div>
-                  <span className="text-sm font-semibold text-gray-700">Produk</span>
+                  <span className="text-sm font-medium text-gray-700">Produk</span>
                 </button>
               )}
               {(chatInfo?.chat_type === 'merchant' || chatInfo?.chat_type === 'support') && (
                 <button onClick={handleOpenOrders} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 rounded-xl transition-colors text-left active:bg-gray-100">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center shrink-0">
+                  <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-900 flex items-center justify-center shrink-0">
                     <Receipt size={16} />
                   </div>
-                  <span className="text-sm font-semibold text-gray-700">Pesanan</span>
+                  <span className="text-sm font-medium text-gray-700">Pesanan/Invoice</span>
                 </button>
               )}
               <button onClick={() => fileInputRef.current?.click()} className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-gray-50 rounded-xl transition-colors text-left active:bg-gray-100">
-                <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center shrink-0">
+                <div className="w-8 h-8 rounded-full bg-gray-100 text-gray-900 flex items-center justify-center shrink-0">
                   <ImageIcon size={16} />
                 </div>
-                <span className="text-sm font-semibold text-gray-700">Gambar</span>
+                <span className="text-sm font-medium text-gray-700">Gambar</span>
               </button>
             </div>
           )}
@@ -861,17 +1129,28 @@ export default function ChatRoom() {
               <h3 className="font-bold text-gray-800 text-lg">Pilih Pesanan</h3>
               <button onClick={() => setShowOrderModal(false)} className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-full flex items-center justify-center text-gray-600 transition-colors"><X size={18} /></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {customerOrders.map(order => (
-                <div key={order.id} onClick={() => sendOrderAttachment(order)} className="p-3 border border-gray-100 rounded-2xl hover:border-primary/30 active:bg-blue-50 cursor-pointer transition-colors group">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-bold text-gray-500 group-hover:text-primary transition-colors">ORDER #{order.id}</span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 uppercase">{order.status}</span>
+            <div className="flex-1 overflow-y-auto p-4">
+              {chatInfo?.chat_type === 'support' ? (
+                Object.entries(
+                  customerOrders.reduce((acc, order) => {
+                    const group = order.merchant_name || order.tipe_layanan || 'Lainnya';
+                    if (!acc[group]) acc[group] = [];
+                    acc[group].push(order);
+                    return acc;
+                  }, {})
+                ).map(([groupName, orders]) => (
+                  <div key={groupName} className="mb-5">
+                    <h4 className="text-[11px] font-bold text-gray-400 mb-2 uppercase tracking-wider px-1">{groupName}</h4>
+                    <div className="space-y-3">
+                      {orders.map(order => renderOrderCard(order))}
+                    </div>
                   </div>
-                  <p className="text-sm font-bold text-gray-800 mb-1">{order.items?.length || 0} Items</p>
-                  <p className="text-primary font-bold text-sm">Rp {order.total_amount?.toLocaleString('id-ID') || order.total_price?.toLocaleString('id-ID')}</p>
+                ))
+              ) : (
+                <div className="space-y-3">
+                  {customerOrders.map(order => renderOrderCard(order))}
                 </div>
-              ))}
+              )}
               {customerOrders.length === 0 && (
                 <div className="text-center py-10">
                   <Receipt size={32} className="mx-auto text-gray-300 mb-2" />

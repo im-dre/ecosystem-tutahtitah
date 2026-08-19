@@ -14,7 +14,7 @@ export default function MerchantDetail() {
   const [isTogglingFavorite, setIsTogglingFavorite] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
-  
+
   // States for search and filter
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('Semua');
@@ -114,7 +114,7 @@ export default function MerchantDetail() {
   const uploadJastipImage = async (file) => {
     const fileExt = file.name.split('.').pop();
     const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
-    
+
     const { error: uploadError } = await supabase.storage
       .from('order-images')
       .upload(fileName, file, {
@@ -146,7 +146,7 @@ export default function MerchantDetail() {
           const compressedFile = await compressImageToThumbnail(item.file);
           imageUrl = await uploadJastipImage(compressedFile);
         }
-        
+
         itemsToAdd.push({
           id: `custom_${Date.now()}_${Math.random()}`,
           name: item.name,
@@ -189,7 +189,7 @@ export default function MerchantDetail() {
           const compressedFile = await compressImageToThumbnail(item.file);
           imageUrl = await uploadJastipImage(compressedFile);
         }
-        
+
         itemsToCheckout.push({
           cart_item_id: `custom_${Date.now()}_${Math.random()}`,
           id: `custom_${Date.now()}_${Math.random()}`,
@@ -246,7 +246,7 @@ export default function MerchantDetail() {
     // Parse is_open whether it's boolean or string "true"/"on"
     const isOpen = todayHours && (todayHours.is_open === true || todayHours.is_open === 'true' || todayHours.is_open === 'on');
     if (!isOpen) return "Tutup";
-    
+
     const openTime = todayHours.open || '08:00';
     const closeTime = todayHours.close || '20:00';
     return `${openTime} - ${closeTime} WIB`;
@@ -254,7 +254,7 @@ export default function MerchantDetail() {
 
   const getStoreStatus = () => {
     if (!merchant) return { isOpen: false, closingSoon: false, text: 'Toko Tutup', colorClass: 'text-red-600 bg-red-50' };
-    
+
     if (!merchant.operating_hours || !Array.isArray(merchant.operating_hours)) {
       return { isOpen: true, closingSoon: false, text: 'Buka', colorClass: 'text-primary bg-blue-50' };
     }
@@ -264,7 +264,7 @@ export default function MerchantDetail() {
 
     const todayHours = merchant.operating_hours.find(h => h.day === today);
     const isOpenStr = todayHours && (todayHours.is_open === true || todayHours.is_open === 'true' || todayHours.is_open === 'on');
-    
+
     if (!isOpenStr) {
       return { isOpen: false, closingSoon: false, text: "Toko Tutup", colorClass: "text-red-600 bg-red-50" };
     }
@@ -297,7 +297,7 @@ export default function MerchantDetail() {
       .from('merchants')
       .select('*')
       .eq('id', merchantId)
-      .single();
+      .maybeSingle();
 
     if (merchantError || !merchantData) return null;
 
@@ -338,7 +338,7 @@ export default function MerchantDetail() {
       .select('rating')
       .eq('target_id', merchantId)
       .eq('target_type', 'merchant');
-      
+
     let ratingStatsObj = { average: 0, count: 0 };
     if (ratingsData && ratingsData.length > 0) {
       const sum = ratingsData.reduce((acc, curr) => acc + curr.rating, 0);
@@ -407,14 +407,14 @@ export default function MerchantDetail() {
       toast.error('Silakan login dulu');
       return;
     }
-    
+
     if (isFollowing) {
       const { error } = await supabase
         .from('merchant_followers')
         .delete()
         .eq('customer_id', user.id)
         .eq('merchant_id', id);
-        
+
       if (!error) {
         mutate(data => ({ ...data, following: false, followerCount: data.followerCount - 1 }), false);
         toast.success('Batal mengikuti toko');
@@ -426,7 +426,7 @@ export default function MerchantDetail() {
           customer_id: user.id,
           merchant_id: id
         });
-        
+
       if (!error) {
         mutate(data => ({ ...data, following: true, followerCount: data.followerCount + 1 }), false);
         toast.success('Berhasil mengikuti toko!');
@@ -440,7 +440,7 @@ export default function MerchantDetail() {
       toast.error("Silakan login dulu untuk chat");
       return;
     }
-    
+
     const { data: existingChat } = await supabase
       .from('chats')
       .select('id')
@@ -449,7 +449,7 @@ export default function MerchantDetail() {
       .eq('chat_type', 'merchant')
       .limit(1)
       .maybeSingle();
-      
+
     if (existingChat) {
       navigate(`/chat/${existingChat.id}`);
     } else {
@@ -462,7 +462,7 @@ export default function MerchantDetail() {
         })
         .select()
         .single();
-        
+
       if (newChat && !error) {
         navigate(`/chat/${newChat.id}`);
       } else {
@@ -491,7 +491,7 @@ export default function MerchantDetail() {
           .delete()
           .eq('product_id', productId)
           .eq('auth_id', session.user.id);
-        
+
         mutate(data => {
           const newSet = new Set(data.favoriteIds);
           newSet.delete(productId);
@@ -506,7 +506,7 @@ export default function MerchantDetail() {
             product_id: productId,
             auth_id: session.user.id
           });
-        
+
         mutate(data => {
           const newSet = new Set(data.favoriteIds);
           newSet.add(productId);
@@ -530,287 +530,289 @@ export default function MerchantDetail() {
     <div className="min-h-screen bg-gray-50 flex flex-col pb-28 relative">
       {/* Back Button */}
       <div className="absolute top-4 left-4 right-4 z-20 flex justify-between items-center">
-        <button onClick={() => navigate(-1)} className="w-8 h-8 bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center text-gray-800 hover:bg-white/70 active:scale-95 transition-all shadow-sm">
+        <button onClick={() => navigate(-1)} className="w-8 h-8 bg-white/50 backdrop-blur-md rounded-full flex items-center justify-center text-gray-800 hover:bg-white/90 active:scale-95 transition-all shadow-sm">
           <ArrowLeft size={18} />
         </button>
 
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={handleFollowMerchant}
-            className={`flex items-center justify-center gap-1 px-3 h-8 rounded-full font-bold text-[11px] transition-all shadow-sm active:scale-95 border ${
-              isFollowing 
-              ? 'bg-white/80 backdrop-blur-md text-gray-700 border-gray-200' 
-              : 'bg-red-500 text-white border-red-500'
-            }`}
-          >
-            <Heart size={13} className={isFollowing ? 'fill-gray-400 text-gray-400' : 'fill-white text-white'} />
-            {isFollowing ? 'Mengikuti' : 'Follow'}
-          </button>
-          
-          <button 
-            onClick={handleChatToko}
-            className="flex items-center justify-center gap-1 px-3 h-8 bg-white/80 backdrop-blur-md border border-gray-200 rounded-full font-bold text-[11px] text-primary transition-all shadow-sm active:scale-95"
-          >
-            <MessageSquare size={13} />
-            Chat
-          </button>
+        {!merchant.is_custom_order && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleFollowMerchant}
+              className={`flex items-center justify-center gap-1 px-3 h-8 rounded-full font-bold text-[11px] transition-all shadow-sm active:scale-95 border ${isFollowing
+                  ? 'bg-white/80 backdrop-blur-md text-gray-700 border-gray-200'
+                  : 'bg-red-500 text-white border-red-500'
+                }`}
+            >
+              <Heart size={13} className={isFollowing ? 'fill-gray-400 text-gray-400' : 'fill-white text-white'} />
+              {isFollowing ? 'Mengikuti' : 'Follow'}
+            </button>
 
-          <button 
-            onClick={async () => {
-              const { data: { user } } = await supabase.auth.getUser();
-              if (!user) {
-                toast.error("Silakan login dulu untuk melaporkan toko");
-                return;
-              }
-              setCurrentUserId(user.id);
-              setShowReportModal(true);
-            }}
-            className="w-8 h-8 bg-white/80 backdrop-blur-md border border-gray-200 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 active:scale-95 transition-all shadow-sm"
-            title="Laporkan Toko"
-          >
-            <Flag size={14} />
-          </button>
-        </div>
+            <button
+              onClick={handleChatToko}
+              className="flex items-center justify-center gap-1 px-3 h-8 bg-white/80 backdrop-blur-md border border-gray-200 rounded-full font-bold text-[11px] text-primary transition-all shadow-sm active:scale-95"
+            >
+              <MessageSquare size={13} />
+              Chat
+            </button>
+
+            <button
+              onClick={async () => {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) {
+                  toast.error("Silakan login dulu untuk melaporkan toko");
+                  return;
+                }
+                setCurrentUserId(user.id);
+                setShowReportModal(true);
+              }}
+              className="w-8 h-8 bg-white/80 backdrop-blur-md border border-gray-200 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 active:scale-95 transition-all shadow-sm"
+              title="Laporkan Toko"
+            >
+              <Flag size={14} />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Cover Image */}
-      <div className="relative h-40 sm:h-48 w-full overflow-hidden">
-        <img
-          src={merchant.logo_url || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"}
-          alt={merchant.name}
-          className="w-full h-full object-cover blur-[2px] brightness-75 scale-110"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/20 to-transparent"></div>
-      </div>
+      {!merchant.is_custom_order && (
+        <div className="relative h-40 sm:h-48 w-full overflow-hidden">
+          <img
+            src={merchant.logo_url || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"}
+            alt={merchant.name}
+            className="w-full h-full object-cover blur-[2px] brightness-75 scale-110"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/20 to-transparent"></div>
+        </div>
+      )}
 
-      <div className="px-3 sm:px-4 -mt-16 relative z-10">
+      <div className={`px-3 sm:px-4 relative z-10 ${merchant.is_custom_order ? 'pt-16' : '-mt-16'}`}>
         {!storeStatus.isOpen ? (
           <div className="bg-red-50 border border-red-100 rounded-xl p-3 mb-3 flex items-center justify-center gap-2 shadow-sm animate-pulse">
             <Clock size={16} className="text-red-600" />
-            <span className="text-red-600 font-bold text-sm">Mohon Maaf, Toko Sedang Tutup</span>
+            <span className="text-red-600 font-bold text-sm">Mohon Maaf, Layanan Sedang Tutup</span>
           </div>
         ) : storeStatus.closingSoon ? (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-3 flex items-center justify-center gap-2 shadow-sm animate-pulse">
             <Clock size={16} className="text-amber-600" />
-            <span className="text-amber-700 font-bold text-sm">Buruan! Toko Sebentar Lagi Tutup</span>
+            <span className="text-amber-700 font-bold text-sm">Buruan! Layanan Sebentar Lagi Tutup</span>
           </div>
         ) : null}
 
-        {/* Merchant Info Card */}
-        <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4 mb-4">
-          <div className="flex gap-3 sm:gap-4 items-start">
-            <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gray-100 rounded-2xl overflow-hidden shrink-0 shadow-sm border border-gray-50 flex items-center justify-center">
-              <img 
-                src={merchant.logo_url || "https://res.cloudinary.com/bvxkjuf5/image/upload/v1786601326/tutahtitah_courier_customer_illustration_1786601249778_o2jls3.jpg"} 
-                alt={merchant.name} 
-                className="w-full h-full object-cover" 
-              />
-            </div>
-
-            <div className="flex-1 pt-1">
-              <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-tight mb-1">{merchant.name}</h1>
-
-              <div className="flex items-center gap-3 mb-2">
-                <div className="flex items-center gap-1">
-                  <Star size={14} className="fill-yellow-400 text-yellow-400" />
-                  <span className="text-[11px] font-bold text-gray-800">{ratingStats.average || '-'}</span>
-                  <span className="text-[10px] text-gray-500">({ratingStats.count})</span>
-                </div>
-                <div className="w-1 h-1 rounded-full bg-gray-300"></div>
-                <div className="flex items-center gap-1 text-[11px]">
-                  <Users size={12} className="text-gray-400" />
-                  <span className="font-semibold text-gray-700">{followerCount}</span>
-                  <span className="text-gray-500">Pengikut</span>
-                </div>
+        {/* Merchant Info Card (Hidden on Custom Order) */}
+        {!merchant.is_custom_order && (
+          <div className="bg-white rounded-2xl shadow-md border border-gray-100 p-4 mb-4">
+            <div className="flex gap-3 sm:gap-4 items-start">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 bg-gray-100 rounded-2xl overflow-hidden shrink-0 shadow-sm border border-gray-50 flex items-center justify-center">
+                <img
+                  src={merchant.logo_url || "https://res.cloudinary.com/bvxkjuf5/image/upload/v1786601326/tutahtitah_courier_customer_illustration_1786601249778_o2jls3.jpg"}
+                  alt={merchant.name}
+                  className="w-full h-full object-cover"
+                />
               </div>
 
-              {/* Category Badges */}
-              <div className="flex flex-wrap gap-1.5 mb-2">
-                {merchantCategories.slice(0, 3).map((cat, idx) => (
-                  <span key={idx} className="bg-blue-50 text-primary text-[9px] font-bold px-2 py-0.5 rounded border border-blue-100 uppercase">
-                    {cat}
-                  </span>
-                ))}
-                {merchantCategories.length === 0 && (
-                  <span className="bg-blue-50 text-primary text-[9px] font-bold px-2 py-0.5 rounded border border-blue-100 uppercase">
-                    UMKM
-                  </span>
-                )}
+              <div className="flex-1 pt-1">
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900 leading-tight mb-1">{merchant.name}</h1>
+
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="flex items-center gap-1">
+                    <Star size={14} className="fill-yellow-400 text-yellow-400" />
+                    <span className="text-[11px] font-bold text-gray-800">{ratingStats.average || '-'}</span>
+                    <span className="text-[10px] text-gray-500">({ratingStats.count})</span>
+                  </div>
+                  <div className="w-1 h-1 rounded-full bg-gray-300"></div>
+                  <div className="flex items-center gap-1 text-[11px]">
+                    <Users size={12} className="text-gray-400" />
+                    <span className="font-semibold text-gray-700">{followerCount}</span>
+                    <span className="text-gray-500">Pengikut</span>
+                  </div>
+                </div>
+
+                {/* Category Badges */}
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {merchantCategories.slice(0, 3).map((cat, idx) => (
+                    <span key={idx} className="bg-blue-50 text-primary text-[9px] font-bold px-2 py-0.5 rounded border border-blue-100 uppercase">
+                      {cat}
+                    </span>
+                  ))}
+                  {merchantCategories.length === 0 && (
+                    <span className="bg-blue-50 text-primary text-[9px] font-bold px-2 py-0.5 rounded border border-blue-100 uppercase">
+                      UMKM
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* Operating Hours and Address */}
-          <div className="mt-3 flex flex-col gap-1.5 text-[10px] sm:text-xs text-gray-500 font-medium pt-3 border-t border-gray-50">
-            <div className="flex items-center gap-1.5">
-              <Clock size={12} className="text-gray-400 shrink-0" />
-              <span>{getTodayHoursDisplay()}</span>
+            {/* Operating Hours and Address */}
+            <div className="mt-3 flex flex-col gap-1.5 text-[10px] sm:text-xs text-gray-500 font-medium pt-3 border-t border-gray-50">
+              <div className="flex items-center gap-1.5">
+                <Clock size={12} className="text-gray-400 shrink-0" />
+                <span>{getTodayHoursDisplay()}</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <MapPin size={12} className="text-primary shrink-0 mt-0.5" />
+                <span className="line-clamp-2 leading-relaxed">{merchant.address || 'Cikalong Wetan'}</span>
+              </div>
             </div>
-            <div className="flex items-start gap-1.5">
-              <MapPin size={12} className="text-primary shrink-0 mt-0.5" />
-              <span className="line-clamp-2 leading-relaxed">{merchant.address || 'Cikalong Wetan'}</span>
+
+            {/* Description */}
+            <div className="mt-4 pt-4 border-t border-gray-50">
+              <p className="text-xs sm:text-sm text-gray-600">
+                {merchant.description}
+              </p>
             </div>
           </div>
-
-
-
-          {/* Description */}
-          <div className="mt-4 pt-4 border-t border-gray-50">
-            <p className="text-xs sm:text-sm text-gray-600">
-              {merchant.description}
-            </p>
-          </div>
-        </div>
+        )}
 
         {/* Dynamic Content Based on merchant.is_custom_order */}
         {merchant.is_custom_order && (
-          <>
-            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 shadow-sm mb-4">
-              <h4 className="text-xs font-bold text-primary uppercase mb-1">💡 Jastip Fleksibel</h4>
-              <p className="text-[11px] text-gray-600 leading-relaxed">Titip belanjaan apapun di warung terdekat atau minimarket. Tulis nama barang dan tentukan jumlahnya di bawah ini!</p>
+          <div className="animate-fadeIn">
+            <div className="bg-blue-50 p-4 rounded-xl mb-4 mt-2">
+              <h4 className="text-sm font-bold text-primary uppercase mb-1.5 flex items-center gap-1.5">
+                <span className="text-base">💡</span> Jastip Fleksibel
+              </h4>
+              <p className="text-xs text-gray-600 leading-relaxed font-medium">Titip belanjaan apapun di pasar, warung, apotek, minimarket ataupun tempat jualan apapun yang belum ada di katalog UMKM. Tulis nama barang dan tentukan jumlahnya di bawah ini!</p>
             </div>
 
-            <div className="bg-white sm:rounded-2xl shadow-sm border-y sm:border border-gray-100 py-5 px-4 mb-6 -mx-3 sm:mx-0">
+            <div className="bg-white py-4 px-4 mb-6 -mx-3 sm:mx-0 border-t border-gray-100">
               <h4 className="font-bold text-gray-800 mb-4 text-sm">Daftar Belanjaan Anda</h4>
 
-            <div className="space-y-3 mb-5">
-              {jastipItems.map((item, index) => (
-                <div key={item.id} className="flex gap-2.5 items-start group">
-                  {/* Number Badge */}
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 mt-1.5 shrink-0 flex items-center justify-center bg-blue-100 text-primary font-bold text-xs sm:text-sm rounded-full shadow-sm border border-blue-200">
-                    {index + 1}
-                  </div>
-                  
-                  {/* Input Fields */}
-                  <div className="flex-1 flex flex-col gap-2">
-                    <div className="relative">
+              <div className="space-y-4 mb-5">
+                {jastipItems.map((item, index) => (
+                  <div key={item.id} className="flex gap-3 items-start group">
+                    {/* Number Badge Native-like */}
+                    <div className="text-gray-400 font-semibold text-sm mt-3 w-4 shrink-0 text-right">
+                      {index + 1}.
+                    </div>
+
+                    {/* Input Fields */}
+                    <div className="flex-1 flex flex-col gap-2">
+                      <div className="relative">
+                        <input
+                          type="text"
+                          placeholder="Cth: Bawang merah 1/4 Kg"
+                          value={item.name}
+                          onChange={(e) => handleUpdateJastipRow(item.id, 'name', e.target.value)}
+                          className="w-full pl-3 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-medium text-gray-800 outline-none focus:border-primary focus:bg-white transition-colors placeholder:text-gray-400"
+                        />
+                        {item.name && (
+                          <div className="absolute right-3.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-green-500"></div>
+                        )}
+                      </div>
+
+                      {/* Image Upload Button */}
+                      <button
+                        onClick={() => fileInputRefs.current[item.id]?.click()}
+                        className="self-start flex items-center gap-1.5 text-[11px] font-semibold text-primary hover:text-blue-700 transition-colors"
+                      >
+                        <Camera size={14} />
+                        {item.file ? 'Ganti Foto' : 'Lampirkan Foto (Opsional)'}
+                      </button>
                       <input
-                        type="text"
-                        placeholder="Cth: Bawang merah 1/4 Kg"
-                        value={item.name}
-                        onChange={(e) => handleUpdateJastipRow(item.id, 'name', e.target.value)}
-                        className="w-full pl-4 pr-10 py-3 sm:py-3.5 bg-white border border-gray-200 rounded-xl text-sm font-semibold text-gray-800 outline-none focus:border-primary focus:ring-4 focus:ring-primary/15 shadow-sm transition-all placeholder:font-medium placeholder:text-gray-400"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        ref={el => fileInputRefs.current[item.id] = el}
+                        onChange={(e) => handleImageSelect(item.id, e.target.files[0])}
                       />
-                      {item.name && (
-                        <div className="absolute right-3.5 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)] animate-pulse"></div>
+
+                      {/* Image Preview */}
+                      {item.previewUrl && (
+                        <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-gray-200 mt-1">
+                          <img src={item.previewUrl} alt="Preview" className="w-full h-full object-cover" />
+                          <button
+                            onClick={() => handleRemoveImage(item.id)}
+                            className="absolute -top-1 -right-1 bg-red-500 text-white p-1 rounded-full scale-75 hover:bg-red-600 transition-colors"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
                       )}
                     </div>
-                      
-                    {/* Image Upload Button */}
+
+                    {/* Trash Button Native-like */}
                     <button
-                      onClick={() => fileInputRefs.current[item.id]?.click()}
-                      className="self-start flex items-center gap-1.5 text-[11px] font-semibold text-primary hover:text-blue-700 transition-colors bg-blue-50/50 hover:bg-blue-100/50 px-3 py-1.5 rounded-lg border border-blue-100/50"
+                      onClick={() => handleRemoveJastipRow(item.id)}
+                      className="mt-3 p-1 shrink-0 flex items-center justify-center text-gray-400 hover:text-red-500 transition-colors active:scale-95"
                     >
-                      <Camera size={14} />
-                      {item.file ? 'Ganti Foto' : 'Lampirkan Foto (Opsional)'}
+                      <Trash2 size={18} />
                     </button>
-                    <input 
-                      type="file" 
-                      accept="image/*"
-                      className="hidden"
-                      ref={el => fileInputRefs.current[item.id] = el}
-                      onChange={(e) => handleImageSelect(item.id, e.target.files[0])}
-                    />
-
-                    {/* Image Preview */}
-                    {item.previewUrl && (
-                      <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-blue-100 shadow-sm mt-1">
-                        <img src={item.previewUrl} alt="Preview" className="w-full h-full object-cover" />
-                        <button 
-                          onClick={() => handleRemoveImage(item.id)}
-                          className="absolute -top-1 -right-1 bg-red-500 text-white p-1 rounded-full scale-75 hover:bg-red-600 transition-colors"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    )}
                   </div>
-
-                  {/* Trash Button */}
-                  <button
-                    onClick={() => handleRemoveJastipRow(item.id)}
-                    className="w-11 h-11 mt-1 shrink-0 flex items-center justify-center text-red-500 bg-white hover:bg-red-50 border border-gray-200 hover:border-red-200 rounded-xl shadow-sm transition-all active:scale-95"
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            <button
-              onClick={handleAddJastipRow}
-              className="w-full py-3.5 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 text-primary font-bold text-sm rounded-xl border border-blue-200 shadow-sm transition-all flex items-center justify-center gap-2 mb-6 active:scale-[0.98]"
-            >
-              <div className="w-5 h-5 bg-white rounded-full flex items-center justify-center text-primary shadow-sm">
-                <span className="text-sm leading-none font-bold">+</span>
+                ))}
               </div>
-              Tambah Barang Lain
-            </button>
 
-            <div className="flex gap-3 pt-4 border-t border-gray-100">
               <button
-                onClick={handleJastipAddToCart}
-                disabled={isUploading || !storeStatus.isOpen}
-                className={`flex-1 py-3 px-4 rounded-xl font-bold flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform border ${(!isUploading && storeStatus.isOpen) ? 'bg-white text-primary border-primary hover:bg-blue-50' : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'}`}
+                onClick={handleAddJastipRow}
+                className="w-full py-3 bg-gray-50 hover:bg-gray-100 text-primary font-semibold text-sm rounded-xl transition-colors flex items-center justify-center gap-2 mb-6"
               >
-                <span className="text-sm">Keranjang</span>
+                + Tambah Barang Lain
               </button>
-              <button
-                onClick={handleJastipCheckoutDirect}
-                disabled={isUploading || !storeStatus.isOpen}
-                className={`flex-1 py-3 px-4 rounded-xl font-bold text-white flex flex-col items-center justify-center gap-0.5 active:scale-95 transition-transform shadow-md ${(!isUploading && storeStatus.isOpen) ? 'bg-primary hover:bg-blue-600 shadow-blue-500/30' : 'bg-gray-300 cursor-not-allowed'}`}
-              >
-                <span className="text-sm">Pesan Langsung</span>
-              </button>
+
+              <div className="flex gap-3 pt-4 border-t border-gray-100">
+                <button
+                  onClick={handleJastipAddToCart}
+                  disabled={isUploading || !storeStatus.isOpen}
+                  className={`flex-1 py-3 px-4 rounded-xl font-semibold flex flex-col items-center justify-center gap-0.5 transition-colors border ${(!isUploading && storeStatus.isOpen) ? 'bg-white text-primary border-primary active:bg-blue-50' : 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'}`}
+                >
+                  <span className="text-sm">Keranjang</span>
+                </button>
+                <button
+                  onClick={handleJastipCheckoutDirect}
+                  disabled={isUploading || !storeStatus.isOpen}
+                  className={`flex-1 py-3 px-4 rounded-xl font-semibold text-white flex flex-col items-center justify-center gap-0.5 transition-colors ${(!isUploading && storeStatus.isOpen) ? 'bg-primary active:bg-blue-700' : 'bg-gray-300 cursor-not-allowed'}`}
+                >
+                  <span className="text-sm">Pesan Langsung</span>
+                </button>
+              </div>
+              {!storeStatus.isOpen && (
+                <p className="text-center text-red-500 text-[10px] mt-2 font-medium">Layanan jastip dinonaktifkan saat layanan tutup</p>
+              )}
             </div>
-            {!storeStatus.isOpen && (
-              <p className="text-center text-red-500 text-[10px] mt-2 font-medium">Layanan jastip dinonaktifkan saat toko tutup</p>
-            )}
-            </div>
-          </>
+          </div>
         )}
 
         {!merchant.is_custom_order && (
           <>
             {/* Search Bar */}
-          <div className="bg-white rounded-xl flex items-center px-3.5 py-3 shadow-sm border border-gray-100 mb-6">
-            <Search size={18} className="text-gray-400" />
-            <input
-              type="text"
-              placeholder="Cari menu di toko ini..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="flex-1 bg-transparent border-none outline-none px-3 text-sm font-semibold text-gray-800 placeholder-gray-400"
-            />
-          </div>
-
-          {/* Menu Section */}
-          <div>
-            <h2 className="text-lg font-bold text-gray-800 mb-3">Daftar Menu</h2>
-
-            {/* Category Tabs */}
-            <div className="flex overflow-x-auto hide-scrollbar gap-2 mb-4 pb-1">
-              {uniqueCategories.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setActiveCategory(cat)}
-                  className={`whitespace-nowrap px-4 py-2 rounded-xl font-semibold text-xs transition-all ${activeCategory === cat
-                    ? 'bg-primary text-white shadow-sm'
-                    : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                    }`}
-                >
-                  {cat}
-                </button>
-              ))}
+            <div className="bg-white rounded-xl flex items-center px-3.5 py-3 shadow-sm border border-gray-100 mb-6">
+              <Search size={18} className="text-gray-400" />
+              <input
+                type="text"
+                placeholder="Cari menu di toko ini..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-1 bg-transparent border-none outline-none px-3 text-sm font-semibold text-gray-800 placeholder-gray-400"
+              />
             </div>
 
-            {/* Product List */}
-            <div className="space-y-3">
-              {filteredProducts.length > 0 ? (
-                filteredProducts.map((product) => (
-                  <div
-                    key={product.id}
-                    onClick={() => {
+            {/* Menu Section */}
+            <div>
+              <h2 className="text-lg font-bold text-gray-800 mb-3">Daftar Menu</h2>
+
+              {/* Category Tabs */}
+              <div className="flex overflow-x-auto hide-scrollbar gap-2 mb-4 pb-1">
+                {uniqueCategories.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setActiveCategory(cat)}
+                    className={`whitespace-nowrap px-4 py-2 rounded-xl font-semibold text-xs transition-all ${activeCategory === cat
+                      ? 'bg-primary text-white shadow-sm'
+                      : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                      }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {/* Product List */}
+              <div className="space-y-3">
+                {filteredProducts.length > 0 ? (
+                  filteredProducts.map((product) => (
+                    <div
+                      key={product.id}
+                      onClick={() => {
                         if (!product.is_available) {
                           toast.error("Produk sedang habis.");
                           return;
@@ -820,10 +822,10 @@ export default function MerchantDetail() {
                         } else {
                           toast.error("Toko sedang tutup, tidak dapat memesan.");
                         }
-                    }}
-                    className={`bg-white rounded-2xl shadow-sm border border-gray-100 flex active:scale-[0.98] transition-transform relative overflow-hidden ${(!storeStatus.isOpen || !product.is_available) ? 'opacity-60 grayscale-[30%] cursor-not-allowed' : 'cursor-pointer'}`}
-                  >
-                    <div className="w-28 h-auto sm:w-32 bg-gray-100 shrink-0 border-r border-gray-50 flex relative">
+                      }}
+                      className={`bg-white rounded-2xl shadow-sm border border-gray-100 flex active:scale-[0.98] transition-transform relative overflow-hidden ${(!storeStatus.isOpen || !product.is_available) ? 'opacity-60 grayscale-[30%] cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      <div className="w-28 h-auto sm:w-32 bg-gray-100 shrink-0 border-r border-gray-50 flex relative">
                         {!storeStatus.isOpen && (
                           <div className="absolute inset-0 bg-black/20 z-10 flex items-center justify-center">
                             <span className="text-white text-[10px] font-bold bg-black/50 px-2 py-1 rounded">TUTUP</span>
@@ -834,82 +836,82 @@ export default function MerchantDetail() {
                             <span className="text-white text-[10px] font-bold bg-black/50 px-2 py-1 rounded">HABIS</span>
                           </div>
                         )}
-                      {product.image_url ? (
-                        <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-400 min-h-[112px]">
-                          <Package size={24} />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 flex flex-col justify-between p-3 sm:p-4">
-                      <div>
-                        {/* Badge Top */}
-                        <div className="flex justify-between items-start mb-1">
-                          <span className="bg-blue-50 text-primary text-[8px] font-semibold px-1.5 py-0.5 rounded uppercase border border-blue-100">
-                            {product.category || 'PRODUK'}
-                          </span>
-                          {product.badge && product.badge !== 'None' && (
-                            <span className="bg-orange-500 text-white text-[8px] font-semibold px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                              {product.badge.toUpperCase()}
-                            </span>
-                          )}
-                        </div>
-                        <h3 className="font-semibold text-gray-900 leading-tight text-sm sm:text-base line-clamp-2 mb-1">{product.name}</h3>
-                        <div className="flex items-center gap-1.5 mb-1.5">
-                          <div className="flex items-center gap-0.5 text-[10px] font-bold text-yellow-600 bg-yellow-50 px-1 py-0.5 rounded">
-                            <Star size={10} className="fill-yellow-500" />
-                            <span>{product.rating_score ? Number(product.rating_score).toFixed(1) : '0.0'}</span>
-                            <span className="font-medium text-yellow-600/80">({product.total_ratings || 0})</span>
+                        {product.image_url ? (
+                          <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-gray-400 min-h-[112px]">
+                            <Package size={24} />
                           </div>
-                          <div className="flex items-center gap-0.5 text-[10px] font-medium text-gray-500 bg-gray-50 px-1 py-0.5 rounded">
-                            <Heart size={10} className="text-gray-400" />
-                            {product.favorite_count || 0} suka
-                          </div>
-                        </div>
-                        {product.description && (
-                          <p className="text-[10px] sm:text-xs text-gray-500 line-clamp-2 leading-relaxed">
-                            {product.description}
-                          </p>
                         )}
                       </div>
+                      <div className="flex-1 flex flex-col justify-between p-3 sm:p-4">
+                        <div>
+                          {/* Badge Top */}
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="bg-blue-50 text-primary text-[8px] font-semibold px-1.5 py-0.5 rounded uppercase border border-blue-100">
+                              {product.category || 'PRODUK'}
+                            </span>
+                            {product.badge && product.badge !== 'None' && (
+                              <span className="bg-orange-500 text-white text-[8px] font-semibold px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                                {product.badge.toUpperCase()}
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="font-semibold text-gray-900 leading-tight text-sm sm:text-base line-clamp-2 mb-1">{product.name}</h3>
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <div className="flex items-center gap-0.5 text-[10px] font-bold text-yellow-600 bg-yellow-50 px-1 py-0.5 rounded">
+                              <Star size={10} className="fill-yellow-500" />
+                              <span>{product.rating_score ? Number(product.rating_score).toFixed(1) : '0.0'}</span>
+                              <span className="font-medium text-yellow-600/80">({product.total_ratings || 0})</span>
+                            </div>
+                            <div className="flex items-center gap-0.5 text-[10px] font-medium text-gray-500 bg-gray-50 px-1 py-0.5 rounded">
+                              <Heart size={10} className="text-gray-400" />
+                              {product.favorite_count || 0} suka
+                            </div>
+                          </div>
+                          {product.description && (
+                            <p className="text-[10px] sm:text-xs text-gray-500 line-clamp-2 leading-relaxed">
+                              {product.description}
+                            </p>
+                          )}
+                        </div>
 
-                      <div className="flex justify-between items-center mt-2">
-                        <span className="font-medium text-primary text-sm sm:text-base">{getDisplayPrice(product)}</span>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={(e) => handleToggleFavorite(e, product.id)}
-                            className="w-8 h-8 sm:w-9 sm:h-9 bg-gray-50 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shadow-sm border border-gray-100 active:scale-90"
-                          >
-                            <Heart 
-                              size={16} 
-                              className={`transition-colors ${favoriteProductIds.has(product.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} 
-                            />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              addToCart(product, merchant);
-                            }}
-                            className="w-8 h-8 sm:w-9 sm:h-9 bg-blue-50 text-primary rounded-full flex items-center justify-center hover:bg-blue-100 transition-colors shadow-sm border border-blue-100 active:scale-90"
-                          >
-                            <ShoppingCart size={16} />
-                          </button>
+                        <div className="flex justify-between items-center mt-2">
+                          <span className="font-medium text-primary text-sm sm:text-base">{getDisplayPrice(product)}</span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={(e) => handleToggleFavorite(e, product.id)}
+                              className="w-8 h-8 sm:w-9 sm:h-9 bg-gray-50 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors shadow-sm border border-gray-100 active:scale-90"
+                            >
+                              <Heart
+                                size={16}
+                                className={`transition-colors ${favoriteProductIds.has(product.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`}
+                              />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                addToCart(product, merchant);
+                              }}
+                              className="w-8 h-8 sm:w-9 sm:h-9 bg-blue-50 text-primary rounded-full flex items-center justify-center hover:bg-blue-100 transition-colors shadow-sm border border-blue-100 active:scale-90"
+                            >
+                              <ShoppingCart size={16} />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
+                  ))
+                ) : (
+                  <div className="text-center py-10 bg-white rounded-2xl border border-gray-100 border-dashed">
+                    <Package size={32} className="mx-auto text-gray-300 mb-2" />
+                    <p className="text-gray-500 text-xs font-medium">
+                      {products.length === 0 ? 'Belum ada produk tersedia.' : 'Produk tidak ditemukan.'}
+                    </p>
                   </div>
-                ))
-              ) : (
-                <div className="text-center py-10 bg-white rounded-2xl border border-gray-100 border-dashed">
-                  <Package size={32} className="mx-auto text-gray-300 mb-2" />
-                  <p className="text-gray-500 text-xs font-medium">
-                    {products.length === 0 ? 'Belum ada produk tersedia.' : 'Produk tidak ditemukan.'}
-                  </p>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
           </>
         )}
       </div>
@@ -934,8 +936,8 @@ export default function MerchantDetail() {
       )}
 
       {/* Report Modal */}
-      <ReportModal 
-        isOpen={showReportModal} 
+      <ReportModal
+        isOpen={showReportModal}
         onClose={() => setShowReportModal(false)}
         targetId={merchant?.id}
         targetType="merchant"

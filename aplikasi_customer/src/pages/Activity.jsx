@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import { Clock, CheckCircle2, Package, Loader2, Motorbike, AlertTriangle, ChevronRight, ChevronDown, Check, ShoppingCart, ShoppingBag, Navigation, Edit3, Heart, PaintRoller, Star, Store, MapPin } from 'lucide-react';
+import { Clock, CheckCircle2, Package, Loader2, Bike, AlertTriangle, ChevronRight, ChevronDown, Check, ShoppingCart, ShoppingBag, Navigation, Edit3, Heart, PaintRoller, Star, Store, MapPin } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import RatingModal from '../components/RatingModal';
 
@@ -114,7 +114,7 @@ export default function Activity() {
     { value: 'Kirim Barang', label: 'Kirim Barang' },
     { value: 'Belanja', label: 'Belanja' }
   ];
-  const [drafts, setDrafts] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
 
@@ -129,13 +129,12 @@ export default function Activity() {
           .from('customers')
           .select('id')
           .eq('auth_id', user.id)
-          .single();
+          .maybeSingle();
 
         if (profile) {
           setCustomerProfileId(profile.id);
           await Promise.all([
             fetchOrders(profile.id),
-            fetchDrafts(user.id),
             fetchFavoriteProducts(user.id),
             fetchFavoriteMerchants(user.id),
             fetchRatings(profile.id)
@@ -179,17 +178,6 @@ export default function Activity() {
     }
   };
 
-  const fetchDrafts = async (authId) => {
-    const { data, error } = await supabase
-      .from('draft_orders')
-      .select('*')
-      .eq('auth_id', authId)
-      .order('created_at', { ascending: false });
-
-    if (!error && data) {
-      setDrafts(data);
-    }
-  };
 
   const fetchRatings = async (customerId) => {
     const { data, error } = await supabase
@@ -428,7 +416,7 @@ export default function Activity() {
   const prosesCount = orders.filter(order => inProgressStatuses.includes(order.status) || !historyStatuses.includes(order.status)).length;
   const ulasanCount = orders.filter(order => isOrderUnrated(order, userRatings)).length;
   const favoritCount = orders.filter(order => order.is_favorite === true).length + favoriteProducts.length + favoriteMerchants.length;
-  const draftCount = drafts.length;
+
 
   const purchasedProducts = orders
     .filter(o => o.status === 'completed')
@@ -445,7 +433,7 @@ export default function Activity() {
             orderId: order.id,
             orderDate: order.created_at,
             merchantId: order.merchant_id || item.merchant_id,
-            merchantName: order.merchants?.name || 'Toko Lainnya',
+            merchantName: item.merchant_name || item.merchantName || order.merchants?.name || 'Toko Lainnya',
             rating: existingRating ? existingRating.rating : 0
           };
         })
@@ -488,8 +476,7 @@ export default function Activity() {
             { id: 'proses', label: 'Dalam Proses', count: prosesCount },
             { id: 'ulasan', label: 'Ulasan', count: ulasanCount },
             { id: 'riwayat', label: 'Riwayat', count: 0 },
-            { id: 'favorit', label: 'Favorit', count: favoritCount },
-            { id: 'draft', label: 'Draft', count: draftCount }
+            { id: 'favorit', label: 'Favorit', count: favoritCount }
           ].map(tab => {
             const isActive = activeTab === tab.id;
             return (
@@ -604,7 +591,7 @@ export default function Activity() {
           ) : (
             <div className="grid grid-cols-2 gap-3 px-4 pt-4">
               {favoriteProducts.map((fp) => {
-                const product = fp.products;
+                const product = Array.isArray(fp.products) ? fp.products[0] : fp.products;
                 if (!product) return null;
                 return (
                   <div
@@ -646,6 +633,16 @@ export default function Activity() {
               })}
             </div>
           )
+        ) : activeTab === 'favorit' && favoriteSubTab === 'pesanan' && filteredOrders.length === 0 ? (
+          <div className="text-center py-20 bg-white rounded-3xl border border-gray-100 shadow-sm mt-4 mx-4">
+            <div className="w-40 h-40 mx-auto mb-4 rounded-3xl overflow-hidden shadow-sm border border-gray-100">
+              <img src="/empty-activity.webp" alt="Belum Ada Pesanan Favorit" className="w-full h-full object-cover" />
+            </div>
+            <h3 className="text-lg font-bold text-gray-900 mb-1">Belum Ada Pesanan Favorit</h3>
+            <p className="text-sm text-gray-500 px-6">
+              Tandai pesanan favoritmu biar gampang dipesan lagi!
+            </p>
+          </div>
         ) : activeTab === 'favorit' && favoriteSubTab === 'toko' ? (
           favoriteMerchants.length === 0 ? (
             <div className="text-center py-20 bg-white rounded-3xl border border-gray-100 shadow-sm mt-4 mx-4">
@@ -723,7 +720,12 @@ export default function Activity() {
                       <p className="text-[10px] text-gray-500 font-medium truncate">{product.merchantName}</p>
                       <span className="text-[9px] text-gray-400 whitespace-nowrap ml-2">{formatDate(product.orderDate)}</span>
                     </div>
-                    <h3 className="text-sm font-bold text-gray-800 line-clamp-1 mb-1.5">{product.name}</h3>
+                    <h3 className="text-sm font-bold text-gray-800 line-clamp-1 mb-0.5">{product.name}</h3>
+                    {product.selectedVariants && Object.keys(product.selectedVariants).length > 0 && (
+                      <p className="text-[10px] text-gray-500 font-medium line-clamp-1 mb-1">
+                        {Object.values(product.selectedVariants).join(', ')}
+                      </p>
+                    )}
                     <div className="flex items-center gap-1 mt-auto">
                       {Array.from({ length: 5 }).map((_, i) => (
                         <button
@@ -748,82 +750,21 @@ export default function Activity() {
               ))}
             </div>
           )
-        ) : (activeTab !== 'draft' && activeTab !== 'ulasan' && filteredOrders.length === 0) || (activeTab === 'ulasan' && ulasanSubTab === 'layanan' && filteredOrders.length === 0) || (activeTab === 'draft' && drafts.length === 0) ? (
+        ) : (activeTab !== 'ulasan' && filteredOrders.length === 0) || (activeTab === 'ulasan' && ulasanSubTab === 'layanan' && filteredOrders.length === 0) ? (
           <div className="text-center py-20 bg-white rounded-3xl border border-gray-100 shadow-sm mt-4 mx-4">
             <div className="w-40 h-40 mx-auto mb-4 rounded-3xl overflow-hidden shadow-sm border border-gray-100">
               <img src="/empty-activity.webp" alt="Kosong" className="w-full h-full object-cover" />
             </div>
             <h3 className="text-lg font-bold text-gray-900 mb-1">
-              {activeTab === 'draft' ? 'Belum Ada Draft' :
-                activeTab === 'ulasan' ? 'Belum Ada Ulasan' :
-                  activeTab === 'riwayat' ? 'Belum Ada Riwayat' :
-                    'Yahh belum Ada Pesanan yang diproses niih'}
+              {activeTab === 'ulasan' ? 'Belum Ada Ulasan' :
+                activeTab === 'riwayat' ? 'Belum Ada Riwayat' :
+                  'Yahh belum Ada Pesanan yang diproses niih'}
             </h3>
             <p className="text-sm text-gray-500 px-6">
               {activeTab === 'proses' ? 'Segera pesan Yukk, biar kami yang antarkan pesanannya' :
-                activeTab === 'draft' ? 'Anda belum memiliki pesanan yang tersimpan sebagai draft.' :
-                  activeTab === 'ulasan' ? 'Wah, saat ini belum ada pesanan yang perlu kamu ulas nih.' :
-                    'Riwayat pesanan kamu masih kosong, yuk mulai belanja atau pesan layanan!'}
+                activeTab === 'ulasan' ? 'Wah, saat ini belum ada pesanan yang perlu kamu ulas nih.' :
+                  'Riwayat pesanan kamu masih kosong, yuk mulai belanja atau pesan layanan!'}
             </p>
-          </div>
-        ) : activeTab === 'draft' ? (
-          <div className="space-y-2.5">
-            {drafts.map((draft) => {
-              const isJasaOnly = ['Antar Jemput', 'Kirim Barang'].includes(draft.tipe_layanan);
-              return (
-                <div key={draft.id} onClick={() => navigate('/checkout', { state: { items: draft.items, draftId: draft.id, merchant: draft.merchant_id ? { id: draft.merchant_id } : null } })} className="bg-white px-4 py-4 border-y border-gray-100 shadow-sm active:bg-gray-50 cursor-pointer transition-colors duration-200">
-                  <div className="flex justify-between items-start mb-3 border-b border-gray-50 pb-3">
-                    <div className="flex gap-3 items-center">
-                      <div className="w-8 h-8 bg-gray-100/80 rounded-xl flex items-center justify-center shrink-0">
-                        {getServiceIcon(draft.tipe_layanan)}
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">Draft {draft.tipe_layanan}</p>
-                        <div className="flex items-center gap-1.5">
-                          <p className="text-[10px] text-gray-400 font-medium">{formatDate(draft.created_at)}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold border bg-gray-50 text-gray-600 border-gray-200`}>
-                      <span className="text-center leading-tight">Belum Selesai</span>
-                    </div>
-                  </div>
-
-                  {/* Order Items Preview */}
-                  <div className="space-y-2 mb-3">
-                    {(draft.items || []).slice(0, 1).map((item, idx) => (
-                      <div key={idx} className="flex gap-3 items-center">
-                        {!isJasaOnly && item.image_url && (
-                          <img src={item.image_url} alt={item.name} className="w-10 h-10 rounded-lg object-cover bg-gray-50 border border-gray-100 shrink-0" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-gray-800 font-medium line-clamp-1">{isJasaOnly ? item.name : `${item.qty}x ${item.name}`}</p>
-                          {!isJasaOnly && (
-                            <p className="text-[11px] text-gray-500 mt-0.5">{(item.is_custom || item.price === 0) ? <span className="text-orange-500 italic">Harga Menyusul</span> : `Rp ${(item.price * item.qty).toLocaleString('id-ID')}`}</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {(draft.items || []).length > 1 && (
-                      <p className="text-[10px] text-gray-400 font-medium italic mt-1 pt-1 border-t border-gray-50">
-                        ... (+ {(draft.items || []).length - 1} produk lainnya)
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Total & Detail Button */}
-                  <div className="flex justify-between items-center pt-3 mt-3 border-t border-dashed border-gray-200">
-                    <div className="flex flex-col">
-                      <span className="text-[10px] font-bold text-gray-400">Total Item</span>
-                      <span className="text-sm font-bold text-primary">{(draft.items || []).length} Barang</span>
-                    </div>
-                    <button className="flex items-center gap-1 text-[11px] font-bold text-white hover:text-white transition-colors bg-primary px-3 py-1.5 rounded-lg active:bg-blue-800 shadow-md shadow-blue-500/20">
-                      Lanjutkan Pesanan <ChevronRight size={14} />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
           </div>
         ) : (
           <div className="space-y-2.5">
@@ -934,12 +875,22 @@ export default function Activity() {
                           </div>
 
                           <div className="space-y-1.5 pl-6 border-l-2 border-gray-50 ml-1.5">
-                            {group.items.map((item, idx) => (
-                              <div key={idx} className="flex gap-2 items-center">
-                                <span className="w-1 h-1 rounded-full bg-gray-300 shrink-0"></span>
-                                <p className="text-xs text-gray-600 line-clamp-1">{item.qty}x {item.name}</p>
-                              </div>
-                            ))}
+                            {group.items.map((item, idx) => {
+                              const variantValues = item.selectedVariants && typeof item.selectedVariants === 'object' ? Object.values(item.selectedVariants).filter(Boolean) : [];
+                              return (
+                                <div key={idx} className="flex gap-2 items-center">
+                                  <span className="w-1 h-1 rounded-full bg-gray-300 shrink-0"></span>
+                                  <p className="text-xs text-gray-600 line-clamp-1">
+                                    {item.qty}x {item.name}
+                                    {variantValues.length > 0 && (
+                                      <span className="text-[10px] text-gray-400 font-normal italic ml-1">
+                                        ({variantValues.join(', ')})
+                                      </span>
+                                    )}
+                                  </p>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       );
@@ -949,9 +900,9 @@ export default function Activity() {
                     <div className="mt-2 pt-3 border-t border-dashed border-gray-200">
                       <div className="flex justify-between items-center">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0 border border-gray-200 overflow-hidden">
-                            <img src="/images/icon-avatar-kurir.webp" alt="Kurir" className="w-full h-full object-cover" onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }} />
-                            <Motorbike size={14} className="text-gray-500 absolute -z-10" />
+                          <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0 border border-gray-200 overflow-hidden relative">
+                            <img src="/images/icon-avatar-kurir.webp" alt="Kurir" className="w-full h-full object-cover z-10" onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }} />
+                            <Bike size={14} className="text-gray-400 absolute" />
                           </div>
                           <div>
                             <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-0.5">Kurir</p>
@@ -982,6 +933,44 @@ export default function Activity() {
                   </div>
                 );
               }
+
+              const getFinalPrice = (item) => {
+                let price = item.price;
+                if (item.variants && item.selectedVariants) {
+                  let variantTotalPrice = 0;
+                  let hasPricedVariant = false;
+                  item.variants.forEach(group => {
+                    if (group.has_price) {
+                      const selectedLabel = item.selectedVariants[group.name];
+                      const option = group.options.find(opt => opt.label === selectedLabel);
+                      if (option) {
+                        variantTotalPrice += (parseFloat(option.price) || 0);
+                        hasPricedVariant = true;
+                      }
+                    }
+                  });
+                  if (hasPricedVariant) {
+                    price = variantTotalPrice;
+                  }
+                }
+                return parseFloat(price) || 0;
+              };
+
+              const getCustomPriceFromBill = (itemName) => {
+                if (!order.bill_details) return null;
+                const lines = order.bill_details.split('\n');
+                for (const line of lines) {
+                  const escapedName = itemName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                  const regex = new RegExp(`${escapedName}.*?:\\s*Rp\\s*([\\d.,]+)`, 'i');
+                  const match = line.match(regex);
+                  if (match) {
+                    return parseFloat(match[1].replace(/\./g, '').replace(/,/g, ''));
+                  }
+                }
+                return null;
+              };
+
+              const isItemCustom = (item) => item.is_custom || !item.price || item.price === 0;
 
               return (
                 <div key={order.id} className="bg-white px-4 py-4 border-y border-gray-100 shadow-sm active:bg-gray-50 transition-colors duration-200">
@@ -1014,19 +1003,33 @@ export default function Activity() {
 
                   {/* Order Items Preview */}
                   <div className="space-y-2 mb-3">
-                    {(order.items || []).slice(0, 1).map((item, idx) => (
-                      <div key={idx} className="flex gap-3 items-center">
-                        {!isJasaOnly && item.image_url && (
-                          <img src={item.image_url} alt={item.name} className="w-10 h-10 rounded-lg object-cover bg-gray-50 border border-gray-100 shrink-0" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs text-gray-800 font-medium line-clamp-1">{isJasaOnly ? item.name : `${item.qty}x ${item.name}`}</p>
-                          {!isJasaOnly && (
-                            <p className="text-[11px] text-gray-500 mt-0.5">Rp {(item.price * item.qty).toLocaleString('id-ID')}</p>
+                    {(order.items || []).slice(0, 1).map((item, idx) => {
+                      let displayPrice = getFinalPrice(item);
+                      if (isItemCustom(item) && displayPrice === 0) {
+                        const billPrice = getCustomPriceFromBill(item.name);
+                        if (billPrice !== null) {
+                          displayPrice = billPrice;
+                        }
+                      }
+                      
+                      return (
+                        <div key={idx} className="flex gap-3 items-center">
+                          {!isJasaOnly && item.image_url && (
+                            <img src={item.image_url} alt={item.name} className="w-10 h-10 rounded-lg object-cover bg-gray-50 border border-gray-100 shrink-0" />
                           )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs text-gray-800 font-medium line-clamp-1">{isJasaOnly ? item.name : `${item.qty}x ${item.name}`}</p>
+                            {!isJasaOnly && (
+                              <p className="text-[11px] text-gray-500 mt-0.5">
+                                {isItemCustom(item) && displayPrice === 0 
+                                  ? <span className="text-orange-500 italic text-[10px]">Menyusul</span> 
+                                  : `Rp ${(displayPrice * item.qty).toLocaleString('id-ID')}`}
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {(order.items || []).length > 1 && (
                       <p className="text-[10px] text-gray-400 font-medium italic mt-1 pt-1 border-t border-gray-50">
                         ... (+ {(order.items || []).length - 1} produk lainnya)
@@ -1050,7 +1053,15 @@ export default function Activity() {
                         <>
                           <span className="text-[10px] font-bold text-gray-400">Total Tagihan (termasuk ongkir)</span>
                           <div className="flex items-center gap-1">
-                            <span className="text-sm font-bold text-primary">Rp {((order.total_amount || 0) + (order.delivery_fee || 0)).toLocaleString('id-ID')}</span>
+                            <span className="text-sm font-bold text-primary">
+                              {order.total_price && order.total_price > 0 
+                                ? `Rp ${(parseFloat(order.total_price) + (order.delivery_fee || 0)).toLocaleString('id-ID')}`
+                                : (
+                                  (order.items || []).every(i => isItemCustom(i)) && (!order.total_price || order.total_price === 0)
+                                    ? <span className="text-orange-500 text-sm italic">Menyusul</span>
+                                    : `Rp ${((order.total_amount || 0) + (order.delivery_fee || 0)).toLocaleString('id-ID')}`
+                                )}
+                            </span>
                           </div>
                         </>
                       )}

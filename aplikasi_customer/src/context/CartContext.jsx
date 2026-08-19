@@ -13,6 +13,8 @@ export const CartProvider = ({ children }) => {
   const [session, setSession] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
 
+  const isUUID = (id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+
   // 1. Listen to Auth State
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -227,7 +229,7 @@ export const CartProvider = ({ children }) => {
     const previousCart = [...cartItems];
     setCartItems(prev => prev.filter(item => item.cart_item_id !== cartItemId));
 
-    if (session?.user) {
+    if (session?.user && isUUID(cartItemId)) {
       const { error } = await supabase.from('cart_items').delete().eq('id', cartItemId);
       if (error) {
         console.error("Remove from cart error:", error);
@@ -253,7 +255,7 @@ export const CartProvider = ({ children }) => {
       item.cart_item_id === cartItemId ? { ...item, qty: newQty } : item
     ));
 
-    if (session?.user) {
+    if (session?.user && isUUID(cartItemId)) {
       const { error } = await supabase.from('cart_items').update({ qty: newQty }).eq('id', cartItemId);
       if (error) {
         console.error("Update qty error:", error);
@@ -280,7 +282,7 @@ export const CartProvider = ({ children }) => {
       item.cart_item_id === cartItemId ? { ...item, selectedVariants: newSelectedVariants } : item
     ));
 
-    if (session?.user) {
+    if (session?.user && isUUID(cartItemId)) {
       const dbPayload = {
         selected_variants: {
           selections: newSelectedVariants,
@@ -322,7 +324,7 @@ export const CartProvider = ({ children }) => {
         name: duplicatedItem.name,
         price: duplicatedItem.price,
         qty: 1,
-        image_url: duplicatedItem.image || '',
+        image_url: duplicatedItem.image_url || duplicatedItem.image || '',
         selected_variants: {
           selections: duplicatedItem.selectedVariants,
           variants_schema: duplicatedItem.variants || [],

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { useCart } from '../context/CartContext';
-import { ArrowLeft, MapPin, Receipt, Wallet, AlertCircle, Loader2, Package, CheckCircle2, Edit3, Store } from 'lucide-react';
+import { ArrowLeft, MapPin, Receipt, Wallet, AlertCircle, Loader2, Package, CheckCircle2, Edit3, Store, Bookmark } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 export default function Checkout() {
@@ -17,6 +17,9 @@ export default function Checkout() {
   const [customAddress, setCustomAddress] = useState('');
   const [showFavoriteModal, setShowFavoriteModal] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState(null);
+  
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [showAddressSheet, setShowAddressSheet] = useState(false);
   
   // State for per-item notes
   const [itemNotes, setItemNotes] = useState({});
@@ -46,6 +49,15 @@ export default function Checkout() {
         if (data) {
           setProfile(data);
           setCustomAddress(data.address || '');
+
+          const { data: addresses } = await supabase
+            .from('customer_addresses')
+            .select('*')
+            .eq('auth_id', user.id)
+            .order('is_default', { ascending: false });
+          if (addresses) {
+            setSavedAddresses(addresses);
+          }
         }
       }
     };
@@ -185,39 +197,40 @@ export default function Checkout() {
     navigate('/activity', { replace: true });
   };
 
-  const handleSaveToDraft = async () => {
+  const handleAddMoreProducts = async () => {
     if (!user) {
-      toast.error("Silakan login untuk menyimpan draft.");
+      toast.error("Silakan login untuk menambah produk.");
       return;
     }
+    
+    if (fromCart) {
+      navigate('/');
+      return;
+    }
+
     try {
       setLoading(true);
-      const itemsWithNotes = items.map((i, idx) => ({
-        ...i,
-        note: itemNotes[idx] || ''
+      const itemsToInsert = items.map(item => ({
+        auth_id: user.id,
+        product_id: item.is_custom ? null : item.id,
+        merchant_id: item.merchant_id,
+        name: item.name,
+        price: item.price,
+        qty: item.qty,
+        image_url: item.image || item.image_url || '',
+        is_custom: item.is_custom || false,
+        selected_variants: {
+          selections: item.selectedVariants || {},
+          variants_schema: item.variants || [],
+          merchant_name: item.merchant_name
+        }
       }));
 
-      const firstMerchantId = items[0]?.merchant_id || null;
-      const draftId = location.state?.draftId;
-
-      const payload = {
-        auth_id: user.id,
-        merchant_id: firstMerchantId,
-        tipe_layanan: 'Belanja',
-        items: itemsWithNotes
-      };
-
-      if (draftId) {
-        await supabase.from('draft_orders').update(payload).eq('id', draftId);
-      } else {
-        await supabase.from('draft_orders').insert([payload]);
-      }
-      
-      toast.success("Pesanan disimpan ke Draft!");
+      await supabase.from('cart_items').insert(itemsToInsert);
       navigate('/');
     } catch (error) {
-      console.error("Save to draft error:", error);
-      toast.error("Gagal menyimpan draft");
+      console.error("Add more products error:", error);
+      toast.error("Gagal menambahkan ke keranjang");
     } finally {
       setLoading(false);
     }
@@ -264,6 +277,16 @@ export default function Checkout() {
                   rows={3}
                   placeholder="Masukkan alamat pengiriman selengkapnya..."
                 />
+                
+                {savedAddresses.length > 0 && (
+                  <button 
+                    onClick={() => setShowAddressSheet(true)}
+                    className="mt-2 w-full flex items-center justify-center gap-2 text-xs font-semibold text-gray-600 bg-gray-50 border border-gray-200 py-2 rounded-xl hover:bg-gray-100 active:scale-95 transition-all"
+                  >
+                    <Bookmark size={14} /> Pilih dari Alamat Tersimpan
+                  </button>
+                )}
+
                 <button
                   onClick={() => setIsEditingAddress(false)}
                   className="mt-2 w-full text-xs font-semibold bg-blue-50 text-primary py-2 rounded-xl border border-blue-100 hover:bg-blue-100 transition-colors active:scale-95"
@@ -300,15 +323,17 @@ export default function Checkout() {
                     return (
                       <div key={originalIdx} className="flex gap-3 items-start">
                         {/* Product Image */}
-                        <div className="w-16 h-16 bg-gray-100 rounded-xl overflow-hidden shrink-0 border border-gray-50">
-                          {item.image_url ? (
-                            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-gray-400">
-                              <Package size={20} />
-                            </div>
-                          )}
-                        </div>
+                        {(!item.is_custom || item.image_url) && (
+                          <div className="w-16 h-16 bg-gray-100 rounded-xl overflow-hidden shrink-0 border border-gray-50">
+                            {item.image_url ? (
+                              <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                <Package size={20} />
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Info & Price */}
                         <div className="flex-1 flex flex-col justify-start">
@@ -423,7 +448,7 @@ export default function Checkout() {
       <div className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white border-t border-gray-100 p-4 shadow-[0_-10px_20px_-10px_rgba(0,0,0,0.05)] z-40">
         <div className="mb-3">
           <button
-            onClick={handleSaveToDraft}
+            onClick={handleAddMoreProducts}
             disabled={loading}
             className="w-full bg-blue-50 hover:bg-blue-100 text-primary font-bold py-3 rounded-xl border border-blue-200 transition-all text-sm active:scale-95 flex items-center justify-center gap-2"
           >
@@ -432,11 +457,7 @@ export default function Checkout() {
         </div>
         <div className="flex gap-3">
           <button
-            onClick={async () => {
-              if (location.state?.draftId) {
-                 await supabase.from('draft_orders').delete().eq('id', location.state.draftId);
-                 toast.success("Draft dihapus");
-              }
+            onClick={() => {
               navigate(-1);
             }}
             disabled={loading}
@@ -485,6 +506,41 @@ export default function Checkout() {
           </div>
         </div>
       )}
+      {/* Saved Address Bottom Sheet */}
+      {showAddressSheet && (
+        <div className="fixed inset-0 z-[100] flex flex-col justify-end max-w-md mx-auto">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" onClick={() => setShowAddressSheet(false)}></div>
+          <div className="bg-white rounded-t-3xl w-full relative z-10 animate-slide-up pb-8 pt-2 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] max-h-[70vh] overflow-hidden flex flex-col">
+            <div className="flex justify-center mb-4 pt-2 shrink-0">
+              <div className="w-12 h-1.5 bg-gray-200 rounded-full"></div>
+            </div>
+            <div className="px-6 mb-4 shrink-0">
+              <h3 className="text-lg font-bold text-gray-900">Pilih Alamat Tersimpan</h3>
+            </div>
+            <div className="px-4 overflow-y-auto flex-1">
+              {savedAddresses.map((addr) => (
+                <button
+                  key={addr.id}
+                  onClick={() => {
+                    setCustomAddress(addr.full_address);
+                    setShowAddressSheet(false);
+                  }}
+                  className="w-full text-left p-4 rounded-2xl mb-3 border border-gray-100 shadow-sm active:scale-95 transition-all bg-white hover:bg-gray-50"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-bold text-gray-900 text-sm">{addr.label}</span>
+                    {addr.is_default && (
+                      <span className="text-[9px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">Utama</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-600 line-clamp-2">{addr.full_address}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

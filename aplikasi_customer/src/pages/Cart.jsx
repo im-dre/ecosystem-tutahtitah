@@ -20,10 +20,14 @@ export default function Cart() {
   }, []);
 
   const fetchProductStatus = async () => {
-    const productIds = cartItems.filter(i => !i.is_custom && i.id).map(i => i.id);
+    const productIds = [...new Set(cartItems.filter(i => !i.is_custom && i.id && !i.id.startsWith('custom_')).map(i => i.id))];
     if (productIds.length === 0) return {};
     
-    const { data } = await supabase.from('products').select('id, is_available').in('id', productIds);
+    const { data, error } = await supabase.from('products').select('id, is_available').in('id', productIds);
+    if (error) {
+      console.error("fetchProductStatus error:", error);
+      return {};
+    }
     const statusMap = {};
     if (data) {
       data.forEach(p => statusMap[p.id] = p.is_available);
@@ -31,21 +35,31 @@ export default function Cart() {
     return statusMap;
   };
 
-  const { data: productStatusMap } = useSWR(cartItems.length > 0 ? 'cart_product_status' : null, fetchProductStatus, {
+  const productIdsKey = cartItems.filter(i => !i.is_custom && i.id && !i.id.startsWith('custom_')).map(i => i.id).join(',');
+  const { data: productStatusMap } = useSWR(productIdsKey ? `cart_product_status_${productIdsKey}` : null, fetchProductStatus, {
     refetchOnWindowFocus: true,
     refetchInterval: 30000
   });
 
-  // Initialize all available items as selected by default when cart loads or changes
+  // Dynamically manage selected item IDs without wiping out user's explicit selections when cartItems update (e.g. temporary ID swaps)
   useEffect(() => {
-    setSelectedItemIds(cartItems.filter(item => {
-      if (item.is_custom) return true;
-      if (productStatusMap && productStatusMap[item.id] === false) return false;
-      return true; // Default selected
-    }).map(item => item.cart_item_id));
-  }, [cartItems.length, productStatusMap]);
+    setSelectedItemIds(prev => {
+      const currentCartIds = cartItems.map(i => i.cart_item_id);
+      const validPrev = prev.filter(id => currentCartIds.includes(id));
+      
+      const newIds = cartItems.filter(item => {
+        if (prev.includes(item.cart_item_id)) return false; // Already processed
+        if (item.is_custom) return true;
+        if (productStatusMap && productStatusMap[item.id] === false) return false;
+        return true; // Default selected
+      }).map(item => item.cart_item_id);
 
-  const handleCheckout = () => {
+      if (newIds.length === 0 && validPrev.length === prev.length) return prev; // no change
+      return [...validPrev, ...newIds];
+    });
+  }, [cartItems, productStatusMap]);
+
+  const handleCheckout = async () => {
     if (!user) {
       toast.error("Anda harus login terlebih dahulu.");
       return;
@@ -63,6 +77,66 @@ export default function Cart() {
           }
         }
       }
+    }
+
+    const toastId = toast.loading("Memvalidasi keranjang...");
+
+    try {
+      const merchantId = selectedItems[0].merchant_id;
+      const { data: mData } = await supabase.from('merchants').select('operating_hours, is_custom_order').eq('id', merchantId).single();
+      
+      if (mData && !mData.is_custom_order) {
+        const getMerchantStatus = (merchant, currentTime) => {
+          if (!merchant || !merchant.operating_hours || !Array.isArray(merchant.operating_hours)) {
+            return { isOpen: true };
+          }
+          const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+          const today = days[currentTime.getDay()];
+          const todayHours = merchant.operating_hours.find(h => h.day === today);
+          
+          const isOpenStr = todayHours && (todayHours.is_open === true || todayHours.is_open === 'true' || todayHours.is_open === 'on');
+          if (!isOpenStr) return { isOpen: false };
+
+          const openTimeStr = todayHours.open || '08:00';
+          const closeTimeStr = todayHours.close || '20:00';
+          const [openH, openM] = openTimeStr.split(':').map(Number);
+          const openMins = (openH || 0) * 60 + (openM || 0);
+          const [closeH, closeM] = closeTimeStr.split(':').map(Number);
+          const closeMins = (closeH || 0) * 60 + (closeM || 0);
+          
+          const currentMins = currentTime.getHours() * 60 + currentTime.getMinutes();
+          return { isOpen: currentMins >= openMins && currentMins <= closeMins };
+        };
+
+        if (!getMerchantStatus(mData, new Date()).isOpen) {
+          toast.dismiss(toastId);
+          toast.error("Toko sedang tutup. Tidak bisa checkout.");
+          return;
+        }
+      }
+
+      const pIds = [...new Set(selectedItems.filter(i => !i.is_custom && i.id && !i.id.startsWith('custom_')).map(i => i.id))];
+      if (pIds.length > 0) {
+        const { data: pData } = await supabase.from('products').select('id, name, is_available').in('id', pIds);
+        if (pData) {
+          for (const item of selectedItems) {
+            if (item.is_custom) continue;
+            const p = pData.find(x => x.id === item.id);
+            if (p && p.is_available === false) {
+              toast.dismiss(toastId);
+              toast.error(`Produk ${p.name} sudah habis.`);
+              return;
+            }
+          }
+        }
+      }
+      
+      toast.dismiss(toastId);
+    } catch (e) {
+      toast.dismiss(toastId);
+      console.error(e);
+      toast.error("Terjadi kesalahan sistem saat verifikasi keranjang.");
+      return;
     }
 
     const merchant = selectedItems.length > 0 ? { id: selectedItems[0].merchant_id, name: selectedItems[0].merchant_name } : null;
@@ -180,9 +254,9 @@ export default function Cart() {
         <h1 className="text-base font-bold text-gray-900 truncate flex-1">Form Pesanan</h1>
       </div>
 
-      <div className="p-3 flex-1">
+      <div className="py-2 flex-1 bg-gray-50">
         {Object.entries(groupedCartItems).map(([merchantId, data]) => (
-          <div key={merchantId} className="bg-white rounded-xl shadow-sm border border-gray-100 p-3 mb-4">
+          <div key={merchantId} className="bg-white border-y border-gray-100 p-4 mb-2 shadow-sm">
             <div className="flex items-center gap-2 mb-3 border-b border-gray-100 pb-2.5">
               <button onClick={() => handleToggleMerchant(data.items)} className="text-primary mr-1 active:scale-95 transition-transform">
                 {data.items.every(i => selectedItemIds.includes(i.cart_item_id)) ? <CheckSquare size={18} className="text-primary" /> : <Square size={18} className="text-gray-300" />}
@@ -208,8 +282,8 @@ export default function Cart() {
                       >
                         {selectedItemIds.includes(item.cart_item_id) ? <CheckSquare size={18} className="text-primary" /> : <Square size={18} className="text-gray-300" />}
                       </button>
-                      {/* Left: Product Image (Hidden for Custom Orders) */}
-                      {!isCustomItem && (
+                      {/* Left: Product Image */}
+                      {(!isCustomItem || item.image_url) && (
                         <div className="w-20 h-20 bg-gray-100 rounded-2xl overflow-hidden shrink-0 border border-gray-50 relative">
                           {item.image_url ? (
                             <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />

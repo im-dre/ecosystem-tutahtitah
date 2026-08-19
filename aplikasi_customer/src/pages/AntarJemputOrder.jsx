@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { ArrowLeft, MapPin, Navigation, FileText, Bike, Loader2, User, Phone } from 'lucide-react';
+import { ArrowLeft, MapPin, Navigation, FileText, Bike, Loader2, User, Phone, Bookmark } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
@@ -12,6 +12,8 @@ export default function AntarJemputOrder() {
   const [loading, setLoading] = useState(false);
   const [showFavoriteModal, setShowFavoriteModal] = useState(false);
   const [createdOrderId, setCreatedOrderId] = useState(null);
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [showAddressSheet, setShowAddressSheet] = useState(null);
   
   const [formData, setFormData] = useState(() => {
     let initialPickup = '';
@@ -50,6 +52,14 @@ export default function AntarJemputOrder() {
           
         if (data) {
           setProfile(data);
+          const { data: addresses } = await supabase
+            .from('customer_addresses')
+            .select('*')
+            .eq('auth_id', user.id)
+            .order('is_default', { ascending: false });
+          if (addresses) {
+            setSavedAddresses(addresses);
+          }
         }
       }
     };
@@ -151,11 +161,11 @@ export default function AntarJemputOrder() {
         </h1>
       </div>
 
-      <div className="p-4 flex-1">
+      <div className="py-2 flex-1 bg-gray-50">
         
         {/* Informasi Pemesan */}
         {profile && (
-          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 mb-4">
+          <div className="bg-white border-y border-gray-100 px-4 py-4 mb-2 shadow-sm">
             <h2 className="text-sm font-bold text-gray-800 mb-3 flex items-center gap-2">
               <User size={16} className="text-primary" /> Informasi Pemesan
             </h2>
@@ -176,7 +186,7 @@ export default function AntarJemputOrder() {
           </div>
         )}
 
-        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-6">
+        <div className="bg-white border-y border-gray-100 px-4 py-5 shadow-sm mb-6">
           <p className="text-xs text-gray-500 mb-6 leading-relaxed">
             Pesan ojek untuk antar jemput dengan cepat dan aman. Isi lokasi Anda dan tujuan di bawah ini.
           </p>
@@ -190,13 +200,23 @@ export default function AntarJemputOrder() {
                   <MapPin size={14} className="text-blue-500" />
                   Alamat Penjemputan <span className="text-red-500">*</span>
                 </label>
-                <button 
-                  type="button" 
-                  onClick={() => useProfileAddress('pickup')}
-                  className="text-[10px] font-bold text-primary bg-blue-50 px-2 py-1 rounded-md hover:bg-blue-100 active:scale-95 transition-all"
-                >
-                  Gunakan Alamat Profil
-                </button>
+                {savedAddresses.length > 0 ? (
+                  <button 
+                    type="button" 
+                    onClick={() => setShowAddressSheet('pickup')}
+                    className="flex items-center gap-1 text-[10px] font-bold text-primary bg-blue-50 px-2 py-1 rounded-md hover:bg-blue-100 active:scale-95 transition-all"
+                  >
+                    <Bookmark size={10} /> Pilih Alamat
+                  </button>
+                ) : (
+                  <button 
+                    type="button" 
+                    onClick={() => useProfileAddress('pickup')}
+                    className="text-[10px] font-bold text-primary bg-blue-50 px-2 py-1 rounded-md hover:bg-blue-100 active:scale-95 transition-all"
+                  >
+                    Gunakan Alamat Profil
+                  </button>
+                )}
               </div>
               <textarea
                 name="pickup"
@@ -216,13 +236,23 @@ export default function AntarJemputOrder() {
                   <Navigation size={14} className="text-green-500" />
                   Alamat Tujuan <span className="text-red-500">*</span>
                 </label>
-                <button 
-                  type="button" 
-                  onClick={() => useProfileAddress('destination')}
-                  className="text-[10px] font-bold text-primary bg-blue-50 px-2 py-1 rounded-md hover:bg-blue-100 active:scale-95 transition-all"
-                >
-                  Gunakan Alamat Profil
-                </button>
+                {savedAddresses.length > 0 ? (
+                  <button 
+                    type="button" 
+                    onClick={() => setShowAddressSheet('destination')}
+                    className="flex items-center gap-1 text-[10px] font-bold text-primary bg-blue-50 px-2 py-1 rounded-md hover:bg-blue-100 active:scale-95 transition-all"
+                  >
+                    <Bookmark size={10} /> Pilih Alamat
+                  </button>
+                ) : (
+                  <button 
+                    type="button" 
+                    onClick={() => useProfileAddress('destination')}
+                    className="text-[10px] font-bold text-primary bg-blue-50 px-2 py-1 rounded-md hover:bg-blue-100 active:scale-95 transition-all"
+                  >
+                    Gunakan Alamat Profil
+                  </button>
+                )}
               </div>
               <textarea
                 name="destination"
@@ -310,6 +340,41 @@ export default function AntarJemputOrder() {
           </div>
         </div>
       )}
+      {/* Saved Address Bottom Sheet */}
+      {showAddressSheet && (
+        <div className="fixed inset-0 z-[100] flex flex-col justify-end max-w-md mx-auto">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" onClick={() => setShowAddressSheet(null)}></div>
+          <div className="bg-white rounded-t-3xl w-full relative z-10 animate-slide-up pb-8 pt-2 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] max-h-[70vh] overflow-hidden flex flex-col">
+            <div className="flex justify-center mb-4 pt-2 shrink-0">
+              <div className="w-12 h-1.5 bg-gray-200 rounded-full"></div>
+            </div>
+            <div className="px-6 mb-4 shrink-0">
+              <h3 className="text-lg font-bold text-gray-900">Pilih Alamat Tersimpan</h3>
+            </div>
+            <div className="px-4 overflow-y-auto flex-1">
+              {savedAddresses.map((addr) => (
+                <button
+                  key={addr.id}
+                  onClick={() => {
+                    setFormData(prev => ({ ...prev, [showAddressSheet]: addr.full_address }));
+                    setShowAddressSheet(null);
+                  }}
+                  className="w-full text-left p-4 rounded-2xl mb-3 border border-gray-100 shadow-sm active:scale-95 transition-all bg-white hover:bg-gray-50"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="font-bold text-gray-900 text-sm">{addr.label}</span>
+                    {addr.is_default && (
+                      <span className="text-[9px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">Utama</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-600 line-clamp-2">{addr.full_address}</p>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

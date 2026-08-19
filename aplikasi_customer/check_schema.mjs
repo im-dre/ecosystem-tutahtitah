@@ -1,13 +1,22 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://tphaeukukktjykorkcxi.supabase.co';
-const supabaseAnonKey = 'sb_publishable_XQdY7plphwCcoEEt7M1_bw_bdgpa0j6';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// Setup Supabase client (Gunakan env var dari Vite)
+const supabaseUrl = 'https://tphaeukukktjykorkcxi.supabase.co'; 
+const supabaseKey = 'sb_publishable_XQdY7plphwCcoEEt7M1_bw_bdgpa0j6';
 
-async function check() {
-  const { data: mer, error: mere } = await supabase.from('merchants').select('*').eq('is_custom_order', true);
-  console.log("Merchants Data:", mer);
-  console.log("Merchants Error:", mere);
+const supabase = createClient(supabaseUrl, supabaseKey);
+
+async function checkSchema() {
+  const { data, error } = await supabase
+    .from('cart_items')
+    .select('*')
+    .limit(1);
+
+  if (error) {
+    console.error('Cart_Items Error:', error);
+  } else {
+    console.log('Cart_Items Data:', data && data.length > 0 ? Object.keys(data[0]) : 'empty');
+  }
 }
 
-check();
+checkSchema();

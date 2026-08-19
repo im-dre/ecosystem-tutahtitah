@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Search, Bell, Store, MapPin, Clock, ShoppingCart, User, Star, Heart } from 'lucide-react';
+import { Search, Bell, Store, MapPin, Clock, ShoppingCart, User, Star, Heart, FileEdit, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import useSWR from 'swr';
@@ -103,17 +103,35 @@ export default function Home() {
 
   const fetcher = async (key) => {
     if (key === 'home_data') {
-      const [merchantsRes, productsRes, bannersRes] = await Promise.all([
-        supabase.from('merchants').select('*'),
-        supabase.from('products').select('*'),
-        supabase.from('banners').select('*')
+      const [merchantsRes, productsRes, bannersRes, ratingsRes, followersRes] = await Promise.all([
+        supabase.from('merchants').select('*').in('status', ['verified', 'published', 'VERIFIED', 'PUBLISHED', 'ACTIVE', 'active']),
+        supabase.from('products').select('*').eq('is_available', true),
+        supabase.from('banners').select('*').eq('is_active', true),
+        supabase.from('ratings').select('target_id, rating').eq('target_type', 'merchant'),
+        supabase.from('merchant_followers').select('merchant_id')
       ]);
       if (merchantsRes.error) throw merchantsRes.error;
       if (productsRes.error) throw productsRes.error;
       if (bannersRes.error) throw bannersRes.error;
       
+      const merchantsData = merchantsRes.data || [];
+      const ratingsData = ratingsRes.data || [];
+      const followersData = followersRes.data || [];
+
+      // Process merchants with ratings and followers
+      const processedMerchants = merchantsData.map(m => {
+        const mRatings = ratingsData.filter(r => r.target_id === m.id);
+        const avg = mRatings.length > 0 ? (mRatings.reduce((sum, r) => sum + r.rating, 0) / mRatings.length).toFixed(1) : 0;
+        const followers = followersData.filter(f => f.merchant_id === m.id).length;
+        return {
+          ...m,
+          ratingStats: { average: avg, total: mRatings.length },
+          followerCount: followers
+        };
+      });
+
       return {
-        merchants: merchantsRes.data || [],
+        merchants: processedMerchants,
         products: productsRes.data || [],
         banners: bannersRes.data || []
       };
@@ -127,14 +145,24 @@ export default function Home() {
 
   useEffect(() => {
     if (homeData) {
-      setMerchants(homeData.merchants);
+      // Map categories based on products
+      const merchantsWithCategories = homeData.merchants.map(merchant => {
+        const mProducts = homeData.products.filter(p => p.merchant_id === merchant.id);
+        const mCategories = [...new Set(mProducts.map(p => p.category).filter(Boolean))];
+        return {
+          ...merchant,
+          productCategories: mCategories
+        };
+      });
+
+      setMerchants(merchantsWithCategories);
       setAllProducts(homeData.products);
       setBanners(homeData.banners);
       setLoadingMerchants(false);
       setBannersLoading(false);
       
       const cats = new Set();
-      homeData.merchants.forEach(m => {
+      merchantsWithCategories.forEach(m => {
         if (m.productCategories) {
           m.productCategories.forEach(c => cats.add(c));
         } else if (m.category) {
@@ -169,11 +197,17 @@ export default function Home() {
     } else if (serviceName === 'Kirim/Antar Barang') {
       navigate('/kirim-barang');
     } else if (serviceName === 'Belanja Pasar/Warung') {
-      navigate('/merchant/eb21ba3d-3486-4aee-bc57-ed2e854297bc');
+      const customMerchant = merchants.find(m => m.is_custom_order);
+      if (customMerchant) {
+        navigate(`/merchant/${customMerchant.id}`);
+      } else {
+        toast.error('Layanan ini sedang tidak tersedia.');
+      }
     }
   };
 
   const filteredMerchants = merchants.filter(m => {
+    if (m.is_custom_order) return false;
     let matchesCategory = true;
     if (activeCategory !== 'Semua Toko') {
       const cat = (m.productCategories && Array.isArray(m.productCategories)) ? m.productCategories : [m.category || ''];
@@ -295,7 +329,48 @@ export default function Home() {
           </div>
         )}
 
-        <div className="mb-5 px-1">
+        {(() => {
+          const customMerchant = merchants.find(m => m.is_custom_order);
+          if (!customMerchant) return null;
+          return (
+            <div className="mb-5 px-1">
+              <div 
+                onClick={() => navigate(`/merchant/${customMerchant.id}`)}
+                className="relative overflow-hidden rounded-2xl cursor-pointer shadow-sm border border-blue-100 group active:scale-95 transition-all bg-gradient-to-br from-blue-50 to-indigo-50"
+              >
+                <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
+                <div className="absolute bottom-0 left-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl -ml-10 -mb-10"></div>
+                <div className="p-4 flex items-center justify-between relative z-10">
+                  <div className="flex-1 pr-4">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-600 text-white font-bold text-[9px] mb-2 shadow-sm animate-pulse">
+                      <Star size={10} className="fill-current text-yellow-300" /> Paling Sering Dipesan
+                    </div>
+                    <h3 className="text-[15px] font-extrabold text-gray-900 leading-tight mb-1.5 drop-shadow-sm">
+                      Bebas Pesan Apa Aja!
+                    </h3>
+                    <p className="text-[11px] font-semibold text-gray-600 leading-snug mb-3">
+                      Ga nemu barangnya? Ketik atau lampirin foto aja, kurir siap beliin.
+                    </p>
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold text-[10px] shadow-sm shadow-blue-500/20 group-hover:bg-blue-700 transition-colors">
+                      Pesan Sekarang
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                    </div>
+                  </div>
+                  <div className="w-20 h-20 shrink-0 relative mt-2">
+                    <div className="absolute inset-0 bg-white/60 rounded-2xl shadow-sm rotate-6 group-hover:rotate-12 transition-transform duration-300"></div>
+                    <img 
+                      src="/banner-custom-order.webp" 
+                      className="w-full h-full object-cover rounded-2xl absolute inset-0 -rotate-3 group-hover:rotate-0 transition-transform duration-300 shadow-sm border border-white/50"
+                      alt="Custom Order"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        <div className="mb-6 px-1">
           <div className="bg-white rounded-xl flex items-center px-3.5 py-3 shadow-sm border border-gray-100">
             <Search size={18} className="text-gray-400" />
             <input
@@ -331,15 +406,16 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="flex flex-col gap-4 -mx-1">
             {loadingMerchants ? (
               [1, 2, 3, 4].map((item) => (
-                <div key={item} className="bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col animate-pulse h-56">
-                  <div className="h-24 w-full bg-gray-200 rounded-t-xl"></div>
-                  <div className="p-2.5 flex-1 flex flex-col">
-                    <div className="h-3 bg-gray-200 rounded-md w-3/4 mb-1.5"></div>
-                    <div className="h-2.5 bg-gray-200 rounded-md w-full mb-1"></div>
-                    <div className="h-2.5 bg-gray-200 rounded-md w-1/2"></div>
+                <div key={item} className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col animate-pulse h-40">
+                  <div className="flex gap-3 p-4">
+                    <div className="w-12 h-12 bg-gray-200 rounded-full"></div>
+                    <div className="flex-1">
+                      <div className="h-3 bg-gray-200 rounded-md w-3/4 mb-2"></div>
+                      <div className="h-2.5 bg-gray-200 rounded-md w-1/2"></div>
+                    </div>
                   </div>
                 </div>
               ))
@@ -354,53 +430,115 @@ export default function Home() {
                   merchantCats = ['UMKM'];
                 }
 
+                const merchantProducts = allProducts.filter(p => p.merchant_id === merchant.id);
+                const displayProducts = merchantProducts.slice(0, 3);
+                const storeStatus = getMerchantStatus(merchant, now);
+
                 return (
                   <div
                     key={merchant.id}
-                    onClick={() => navigate(`/merchant/${merchant.id}`)}
-                    className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden cursor-pointer transition-all active:scale-95 flex flex-col"
+                    className={`bg-white shadow-sm border border-gray-100 rounded-xl overflow-hidden flex flex-col font-sans ${!storeStatus.isOpen ? 'opacity-70 grayscale-[20%]' : ''}`}
                   >
-                    <div className="relative h-24 sm:h-28 w-full bg-gray-200">
-                      <img
-                        src={merchant.logo_url || "https://res.cloudinary.com/bvxkjuf5/image/upload/v1786601326/tutahtitah_courier_customer_illustration_1786601249778_o2jls3.jpg"}
-                        alt={merchant.name}
-                        className={`w-full h-full object-cover ${!getMerchantStatus(merchant, now).isOpen ? 'grayscale opacity-80' : ''}`}
-                      />
-                      <div className={`absolute bottom-1.5 left-1.5 text-[8px] sm:text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1 shadow-sm ${!getMerchantStatus(merchant, now).isOpen ? 'bg-red-50/90 text-red-600 border border-red-100' : 'bg-white text-gray-800 border border-white'}`}>
-                        <Clock size={8} className={!getMerchantStatus(merchant, now).isOpen ? 'text-red-500' : 'text-primary'} /> 
-                        {!getMerchantStatus(merchant, now).isOpen ? 'TUTUP' : `Buka • ${getMerchantStatus(merchant, now).hoursText}`}
+                    {/* Header Toko */}
+                    <div
+                      onClick={() => navigate(`/merchant/${merchant.id}`)}
+                      className="p-3 sm:p-4 flex gap-3 sm:gap-4 items-center cursor-pointer active:bg-gray-50 transition-colors border-b border-gray-100"
+                    >
+                      {/* Thumbnail Toko */}
+                      <div className="w-12 h-12 sm:w-14 sm:h-14 bg-gray-100 rounded-full overflow-hidden shrink-0 shadow-sm border border-gray-50 flex items-center justify-center text-gray-400">
+                        {merchant.logo_url ? (
+                          <img
+                            src={merchant.logo_url}
+                            alt={merchant.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Store size={24} />
+                        )}
                       </div>
-                    </div>
-                    <div className="p-2.5 flex-1 flex flex-col">
-                      <div className="flex gap-1 flex-wrap mb-1">
-                        {merchantCats.slice(0, 2).map((cat, idx) => (
-                          <span key={idx} className="bg-blue-50 text-blue-700 text-[7px] font-bold px-1 py-0.5 rounded uppercase border border-blue-100">{cat}</span>
-                        ))}
-                      </div>
-                      <h3 className="text-xs font-bold text-gray-900 leading-tight mb-1 line-clamp-1">{merchant.name}</h3>
-                      
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <div className="flex items-center gap-1 bg-yellow-50 px-1.5 py-0.5 rounded text-[9px] font-bold text-yellow-700">
-                          <Star size={10} className="fill-yellow-500 text-yellow-500" />
-                          {merchant.ratingStats?.average || '0.0'}
+                      {/* Info Toko */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start mb-0.5">
+                          <h3 className="text-sm sm:text-base font-semibold text-gray-900 leading-tight truncate mr-2">{merchant.name}</h3>
+                          <div className={`${!storeStatus.isOpen ? 'bg-red-50 text-red-600' : 'bg-blue-50 text-blue-600'} text-[8px] sm:text-[9px] font-medium px-1.5 py-0.5 rounded flex items-center gap-0.5 shrink-0`}>
+                            <Clock size={8} /> {!storeStatus.isOpen ? 'Tutup' : storeStatus.hoursText}
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1 bg-gray-50 px-1.5 py-0.5 rounded text-[9px] font-medium text-gray-600">
-                          <Heart size={10} className="text-gray-400" />
-                          {merchant.followerCount || 0}
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className="flex gap-1 flex-wrap">
+                            {merchantCats.slice(0, 2).map((cat, idx) => (
+                              <span key={idx} className="bg-blue-50 text-blue-700 text-[8px] font-medium px-1.5 py-0.5 rounded uppercase border border-blue-100">{cat}</span>
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-1.5 border-l border-gray-200 pl-2">
+                            <div className="flex items-center gap-0.5 text-[9px] font-bold text-yellow-600">
+                              <Star size={10} className="fill-yellow-500" />
+                              {merchant.ratingStats?.average || '0.0'}
+                            </div>
+                            <div className="flex items-center gap-0.5 text-[9px] font-medium text-gray-500">
+                              <Heart size={10} className="text-gray-400" />
+                              {merchant.followerCount || 0}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-
-                      <p className="text-[9px] text-gray-500 line-clamp-2 leading-snug mb-1.5">
-                        {merchant.description || 'Belanja kebutuhan sehari-hari? List belanjaannya disini!!'}
-                      </p>
-
-                      <div className="mt-auto border-t border-gray-50 pt-1.5">
-                        <p className="text-[8px] text-gray-500 font-medium flex items-start gap-1">
-                          <MapPin size={9} className="mt-0.5 shrink-0 text-red-500" />
-                          <span className="line-clamp-1">{merchant.address || 'Alamat toko belum diatur'}</span>
+                        <p className="text-[10px] sm:text-xs text-gray-500 font-medium flex items-center gap-1 truncate">
+                          <MapPin size={10} className="shrink-0 text-red-500" />
+                          <span className="truncate">{merchant.address || 'Alamat tidak tersedia'}</span>
                         </p>
                       </div>
                     </div>
+
+                    {/* Isi List (Preview Produk Horizontal) */}
+                    {displayProducts.length > 0 && (
+                      <div className="px-3 pt-3 pb-4 bg-gray-50/50">
+                        <div className="flex overflow-x-auto hide-scrollbar gap-3 pb-1 snap-x">
+                          {displayProducts.map(product => (
+                            <div
+                              key={product.id}
+                              onClick={() => navigate(`/product/${product.id}`, { state: { merchant } })}
+                              className="w-28 sm:w-32 shrink-0 bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm flex flex-col snap-start cursor-pointer active:scale-95 transition-transform"
+                            >
+                              <div className="h-24 w-full bg-gray-100 relative">
+                                {product.image_url ? (
+                                  <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                    <Store size={20} />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="p-2 flex-1 flex flex-col justify-between">
+                                <h4 className="text-[10px] sm:text-xs font-medium text-gray-800 line-clamp-2 leading-snug mb-1">{product.name}</h4>
+                                <div className="flex items-center gap-1.5 mb-1 mt-auto">
+                                  <div className="flex items-center gap-0.5 text-[9px] font-bold text-yellow-600">
+                                    <Star size={9} className="fill-yellow-500" />
+                                    {product.rating_score ? Number(product.rating_score).toFixed(1) : '0.0'}
+                                  </div>
+                                  <div className="flex items-center gap-0.5 text-[9px] font-medium text-gray-500">
+                                    <Heart size={9} className="text-gray-400" />
+                                    {product.favorite_count || 0}
+                                  </div>
+                                </div>
+                                <p className="text-[10px] sm:text-xs font-semibold text-primary">
+                                  {product.price > 0 ? `Rp ${product.price.toLocaleString('id-ID')}` : 'Harga Menyesuaikan'}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+
+                          {/* Card Lihat Semua Produk */}
+                          <div
+                            onClick={() => navigate(`/merchant/${merchant.id}`)}
+                            className="w-24 sm:w-28 shrink-0 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl shadow-sm flex flex-col items-center justify-center snap-start cursor-pointer active:scale-95 transition-transform p-3 text-center"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-primary shadow-sm mb-2">
+                              <ArrowRight size={16} />
+                            </div>
+                            <span className="text-[10px] font-semibold text-primary leading-tight">Lihat semua<br />Produk</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })
@@ -413,17 +551,7 @@ export default function Home() {
         </div>
       </div>
 
-      <button
-        onClick={() => {
-          navigate(`/merchant/eb21ba3d-3486-4aee-bc57-ed2e854297bc`);
-        }}
-        className={`fixed right-4 z-30 bg-accent text-primary p-4 rounded-full shadow-[0_4px_15px_rgba(250,204,21,0.5)] flex items-center justify-center hover:bg-yellow-400 hover:scale-105 active:scale-95 transition-all duration-300 ${cartCount > 0 ? 'bottom-36' : 'bottom-20'}`}
-        aria-label="Pesan Bebas / Custom"
-      >
-        <div className="flex items-center gap-2 relative">
-          <FileEdit size={24} strokeWidth={2.5} />
-        </div>
-      </button>
+
 
       {cartCount > 0 && (
         <div className="fixed bottom-20 left-0 right-0 max-w-md mx-auto p-4 z-40 animate-slideUp">
