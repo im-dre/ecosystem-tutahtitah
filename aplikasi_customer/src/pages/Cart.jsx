@@ -216,6 +216,15 @@ export default function Cart() {
     .filter(item => selectedItemIds.includes(item.cart_item_id))
     .reduce((total, item) => total + (calculateItemPrice(item) * item.qty), 0);
 
+  const hasMissingVariants = cartItems
+    .filter(item => selectedItemIds.includes(item.cart_item_id))
+    .some(item => {
+      if (item.variants && item.variants.length > 0) {
+        return item.variants.some(group => !item.selectedVariants || !item.selectedVariants[group.name] || item.selectedVariants[group.name] === '');
+      }
+      return false;
+    });
+
   return (
     <div className="min-h-screen bg-gray-50 pb-40 relative">
       {/* Confirmation Modal */}
@@ -432,10 +441,10 @@ export default function Cart() {
 
           <button
             onClick={handleCheckout}
-            disabled={loading || selectedItemIds.length === 0}
+            disabled={loading || selectedItemIds.length === 0 || hasMissingVariants}
             className="flex-1 bg-primary hover:bg-blue-800 disabled:bg-gray-300 disabled:text-gray-500 text-white font-bold rounded-2xl transition-all duration-200 flex items-center justify-center gap-2 shadow-md shadow-blue-500/30 active:scale-95 text-sm"
           >
-            {loading ? <Loader2 className="animate-spin" size={18} /> : 'Lanjut Checkout'}
+            {loading ? <Loader2 className="animate-spin" size={18} /> : hasMissingVariants ? 'Pilih Varian' : 'Lanjut Checkout'}
           </button>
         </div>
       </div>
