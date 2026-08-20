@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
-import { User, Mail, Lock, Phone, Loader2 } from 'lucide-react';
+import { User, Mail, Lock, Phone, Loader2, Eye, EyeOff } from 'lucide-react';
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -138,17 +139,28 @@ export default function Auth() {
                 <Lock size={18} strokeWidth={2.5} />
               </div>
               <input
-                type="password"
+                type={showPassword ? "text" : "password"}
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="block w-full pl-11 pr-4 py-3.5 border-2 border-gray-200 rounded-full text-sm text-gray-800 placeholder-gray-400 focus:ring-4 focus:ring-[#2f6bf3]/20 focus:border-[#2f6bf3] outline-none transition-all font-medium"
+                className="block w-full pl-11 pr-12 py-3.5 border-2 border-gray-200 rounded-full text-sm text-gray-800 placeholder-gray-400 focus:ring-4 focus:ring-[#2f6bf3]/20 focus:border-[#2f6bf3] outline-none transition-all font-medium"
                 placeholder="Password"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-[#2f6bf3] transition-colors"
+              >
+                {showPassword ? <EyeOff size={18} strokeWidth={2.5} /> : <Eye size={18} strokeWidth={2.5} />}
+              </button>
             </div>
 
             <div className="flex justify-center mt-3 mb-4">
-              <button type="button" className="text-xs font-semibold text-gray-400 hover:text-gray-600 border-b border-gray-300 pb-0.5 transition-colors">
+              <button 
+                type="button" 
+                onClick={() => navigate('/forgot-password')}
+                className="text-xs font-semibold text-gray-400 hover:text-gray-600 border-b border-gray-300 pb-0.5 transition-colors"
+              >
                 Lupa Password?
               </button>
             </div>
@@ -239,13 +251,20 @@ export default function Auth() {
           </div>
           <div className="relative">
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="block w-full py-2 bg-transparent border-b-2 border-gray-100 text-sm text-gray-800 placeholder-gray-400 focus:border-[#2f6bf3] outline-none transition-colors font-medium"
+              className="block w-full py-2 pr-10 bg-transparent border-b-2 border-gray-100 text-sm text-gray-800 placeholder-gray-400 focus:border-[#2f6bf3] outline-none transition-colors font-medium"
               placeholder="Password"
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute inset-y-0 right-0 pr-2 flex items-center text-gray-400 hover:text-[#2f6bf3] transition-colors"
+            >
+              {showPassword ? <EyeOff size={18} strokeWidth={2.5} /> : <Eye size={18} strokeWidth={2.5} />}
+            </button>
           </div>
 
           <div className="pt-8">

@@ -2,9 +2,30 @@ import { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { supabase } from '../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
-import { Trash2, Plus, Minus, Receipt, Loader2, ArrowLeft, Store, Package, AlertCircle, CheckSquare, Square } from 'lucide-react';
+import { Trash2, Plus, Minus, Receipt, Loader2, ArrowLeft, Store, Package, AlertCircle, CheckSquare, Square, Clock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import useSWR from 'swr';
+
+// Helper: cek status buka/tutup merchant berdasarkan operating_hours
+const getMerchantStatus = (merchant, currentTime) => {
+  if (!merchant || !merchant.operating_hours || !Array.isArray(merchant.operating_hours)) {
+    return { isOpen: true, hoursText: '08:00 - 20:00 WIB' };
+  }
+  const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+  const today = days[currentTime.getDay()];
+  const todayHours = merchant.operating_hours.find(h => h.day === today);
+  const isOpenStr = todayHours && (todayHours.is_open === true || todayHours.is_open === 'true' || todayHours.is_open === 'on');
+  if (!isOpenStr) return { isOpen: false, hoursText: 'Tutup Hari Ini' };
+  const openTimeStr = todayHours.open || '08:00';
+  const closeTimeStr = todayHours.close || '20:00';
+  const [openH, openM] = openTimeStr.split(':').map(Number);
+  const [closeH, closeM] = closeTimeStr.split(':').map(Number);
+  const currentMins = currentTime.getHours() * 60 + currentTime.getMinutes();
+  const openMins = (openH || 0) * 60 + (openM || 0);
+  const closeMins = (closeH || 0) * 60 + (closeM || 0);
+  const isOpen = currentMins >= openMins && currentMins <= closeMins;
+  return { isOpen, hoursText: `${openTimeStr} - ${closeTimeStr} WIB` };
+};
 
 export default function Cart() {
   const { cartItems, updateQuantity, removeFromCart, clearCart, cartTotal, updateItemVariant, calculateItemPrice, duplicateItem } = useCart();
@@ -12,6 +33,7 @@ export default function Cart() {
   const [user, setUser] = useState(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState([]);
+  const [now, setNow] = useState(new Date());
   const navigate = useNavigate();
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -41,6 +63,29 @@ export default function Cart() {
     refetchInterval: 30000
   });
 
+  // Fetch status buka/tutup merchant yang ada di cart
+  const merchantIdsKey = [...new Set(cartItems.map(i => i.merchant_id).filter(Boolean))].join(',');
+  const fetchMerchantStatus = async () => {
+    const ids = [...new Set(cartItems.map(i => i.merchant_id).filter(Boolean))];
+    if (ids.length === 0) return {};
+    const { data, error } = await supabase.from('merchants').select('id, operating_hours, is_custom_order').in('id', ids);
+    if (error || !data) return {};
+    const map = {};
+    data.forEach(m => { map[m.id] = m; });
+    return map;
+  };
+  const { data: merchantDataMap } = useSWR(
+    merchantIdsKey ? `cart_merchant_status_${merchantIdsKey}` : null,
+    fetchMerchantStatus,
+    { refetchOnWindowFocus: true } // Fetch sekali saat buka, refetch saat kembali ke tab — tanpa polling
+  );
+
+  // Update waktu setiap menit untuk refresh status buka/tutup
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Dynamically manage selected item IDs without wiping out user's explicit selections when cartItems update (e.g. temporary ID swaps)
   useEffect(() => {
     setSelectedItemIds(prev => {
@@ -51,13 +96,18 @@ export default function Cart() {
         if (prev.includes(item.cart_item_id)) return false; // Already processed
         if (item.is_custom) return true;
         if (productStatusMap && productStatusMap[item.id] === false) return false;
+        // Jangan auto-select jika toko sedang tutup
+        if (merchantDataMap && merchantDataMap[item.merchant_id]) {
+          const mStatus = getMerchantStatus(merchantDataMap[item.merchant_id], now);
+          if (!mStatus.isOpen && !merchantDataMap[item.merchant_id]?.is_custom_order) return false;
+        }
         return true; // Default selected
       }).map(item => item.cart_item_id);
 
       if (newIds.length === 0 && validPrev.length === prev.length) return prev; // no change
       return [...validPrev, ...newIds];
     });
-  }, [cartItems, productStatusMap]);
+  }, [cartItems, productStatusMap, merchantDataMap, now]);
 
   const handleCheckout = async () => {
     if (!user) {
@@ -198,8 +248,20 @@ export default function Cart() {
     );
   };
 
-  const handleToggleMerchant = (items) => {
-    const availableItems = items.filter(i => i.is_custom || !productStatusMap || productStatusMap[i.id] !== false);
+  const handleToggleMerchant = (items, merchantId) => {
+    // Cek apakah merchant tutup
+    if (merchantDataMap && merchantDataMap[merchantId]) {
+      const mData = merchantDataMap[merchantId];
+      if (!mData.is_custom_order) {
+        const mStatus = getMerchantStatus(mData, now);
+        if (!mStatus.isOpen) return; // Jangan bisa select kalau tutup
+      }
+    }
+    const availableItems = items.filter(i => {
+      if (i.is_custom) return true;
+      if (productStatusMap && productStatusMap[i.id] === false) return false;
+      return true;
+    });
     const itemIds = availableItems.map(i => i.cart_item_id);
     if (itemIds.length === 0) return;
     
@@ -257,20 +319,40 @@ export default function Cart() {
       <div className="py-2 flex-1 bg-gray-50">
         {Object.entries(groupedCartItems).map(([merchantId, data]) => (
           <div key={merchantId} className="bg-white border-y border-gray-100 p-4 mb-2 shadow-sm">
-            <div className="flex items-center gap-2 mb-3 border-b border-gray-100 pb-2.5">
-              <button onClick={() => handleToggleMerchant(data.items)} className="text-primary mr-1 active:scale-95 transition-transform">
-                {data.items.every(i => selectedItemIds.includes(i.cart_item_id)) ? <CheckSquare size={18} className="text-primary" /> : <Square size={18} className="text-gray-300" />}
-              </button>
-              <Store size={16} className="text-primary" />
-              <h2 className="font-bold text-gray-800 text-sm">
-                Pesanan dari <span className="text-primary">{data.merchantName}</span>
-              </h2>
-            </div>
+            {(() => {
+              // Cek status buka/tutup merchant
+              const mData = merchantDataMap?.[merchantId];
+              const mStatus = mData && !mData.is_custom_order ? getMerchantStatus(mData, now) : { isOpen: true };
+              const isMerchantClosed = !mStatus.isOpen;
 
-            <div className="space-y-4">
-              {data.items.map((item, index) => {
-                const isCustomItem = item.is_custom || !item.price || item.price === 0;
-                const isAvailable = isCustomItem || !productStatusMap || productStatusMap[item.id] !== false;
+              return (
+                <>
+                  <div className="flex items-center gap-2 mb-3 border-b border-gray-100 pb-2.5">
+                    <button
+                      onClick={() => handleToggleMerchant(data.items, merchantId)}
+                      disabled={isMerchantClosed}
+                      className={`mr-1 active:scale-95 transition-transform ${isMerchantClosed ? 'opacity-30 cursor-not-allowed' : 'text-primary'}`}
+                    >
+                      {!isMerchantClosed && data.items.every(i => selectedItemIds.includes(i.cart_item_id)) ? <CheckSquare size={18} className="text-primary" /> : <Square size={18} className="text-gray-300" />}
+                    </button>
+                    <Store size={16} className={isMerchantClosed ? 'text-gray-400' : 'text-primary'} />
+                    <h2 className="font-bold text-gray-800 text-sm flex-1">
+                      Pesanan dari <span className={isMerchantClosed ? 'text-gray-500' : 'text-primary'}>{data.merchantName}</span>
+                    </h2>
+                    {isMerchantClosed && (
+                      <div className="flex items-center gap-1 bg-red-50 border border-red-100 text-red-600 text-[9px] font-bold px-2 py-1 rounded-full">
+                        <Clock size={9} />
+                        Toko Tutup
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-4">
+                    {data.items.map((item, index) => {
+                      const isCustomItem = item.is_custom || !item.price || item.price === 0;
+                      const isProductUnavailable = !isCustomItem && productStatusMap && productStatusMap[item.id] === false;
+                      // Item tidak tersedia jika produk habis ATAU toko tutup
+                      const isAvailable = !isProductUnavailable && !isMerchantClosed;
                 
                 return (
                   <div key={item.cart_item_id || `${item.id}-${index}`} className={`pb-4 border-b border-gray-100 last:border-0 last:pb-0 transition-opacity duration-200 ${!isAvailable ? 'opacity-40 grayscale' : !selectedItemIds.includes(item.cart_item_id) ? 'opacity-50' : 'opacity-100'}`}>
@@ -295,7 +377,7 @@ export default function Cart() {
                           {!isAvailable && (
                             <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                               <span className="text-[10px] font-bold text-white bg-red-500 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                                Habis
+                                {isMerchantClosed ? 'Tutup' : 'Habis'}
                               </span>
                             </div>
                           )}
@@ -409,6 +491,9 @@ export default function Cart() {
                 )
               })}
             </div>
+            </>
+          );
+        })()}
           </div>
         ))}
       </div>

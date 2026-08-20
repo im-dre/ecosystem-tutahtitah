@@ -14,7 +14,7 @@ const getMerchantStatus = (merchant, currentTime) => {
   const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
   const today = days[currentTime.getDay()];
   const todayHours = merchant.operating_hours.find(h => h.day === today);
-  
+
   const isOpenStr = todayHours && (todayHours.is_open === true || todayHours.is_open === 'true' || todayHours.is_open === 'on');
   if (!isOpenStr) return { isOpen: false, hoursText: 'Tutup' };
 
@@ -24,10 +24,10 @@ const getMerchantStatus = (merchant, currentTime) => {
   const openMins = (openH || 0) * 60 + (openM || 0);
   const [closeH, closeM] = closeTimeStr.split(':').map(Number);
   const closeMins = (closeH || 0) * 60 + (closeM || 0);
-  
+
   const currentMins = currentTime.getHours() * 60 + currentTime.getMinutes();
   const isOpen = currentMins >= openMins && currentMins <= closeMins;
-  
+
   return { isOpen, hoursText: `${openTimeStr} - ${closeTimeStr} WIB` };
 };
 
@@ -127,7 +127,7 @@ export default function Home() {
       if (merchantsRes.error) throw merchantsRes.error;
       if (productsRes.error) throw productsRes.error;
       if (bannersRes.error) throw bannersRes.error;
-      
+
       const merchantsData = merchantsRes.data || [];
       const ratingsData = ratingsRes.data || [];
       const followersData = followersRes.data || [];
@@ -174,7 +174,7 @@ export default function Home() {
       setBanners(homeData.banners);
       setLoadingMerchants(false);
       setBannersLoading(false);
-      
+
       const cats = new Set();
       merchantsWithCategories.forEach(m => {
         if (m.productCategories) {
@@ -213,9 +213,14 @@ export default function Home() {
     } else if (serviceName === 'Belanja Pasar/Warung') {
       const customMerchant = merchants.find(m => m.is_custom_order);
       if (customMerchant) {
+        const status = getMerchantStatus(customMerchant, now);
+        if (!status.isOpen) {
+          toast.error(`Mohon maaf, saat ini Layanan sedang Tutup. Buka kembali pukul ${status.hoursText}`, { icon: '🔒' });
+          return;
+        }
         navigate(`/merchant/${customMerchant.id}`);
       } else {
-        toast.error('Layanan ini sedang tidak tersedia.');
+        toast.error('Mohon maaf, saat ini Layanan Tutup. Buka kembali pukul ${status.hoursText}');
       }
     }
   };
@@ -347,34 +352,59 @@ export default function Home() {
         {(() => {
           const customMerchant = merchants.find(m => m.is_custom_order);
           if (!customMerchant) return null;
+          const customStatus = getMerchantStatus(customMerchant, now);
           return (
             <div className="mb-5 px-1" id="tour-custom-order">
-              <div 
-                onClick={() => navigate(`/merchant/${customMerchant.id}`)}
-                className="relative overflow-hidden rounded-2xl cursor-pointer shadow-sm border border-blue-100 group active:scale-95 transition-all bg-gradient-to-br from-blue-50 to-indigo-50"
+              <div
+                onClick={() => {
+                  if (!customStatus.isOpen) {
+                    toast.error(`Mohon maaf, saat ini Layanan sedang Tutup. Buka kembali pukul ${customStatus.hoursText}`, { icon: '🔒' });
+                    return;
+                  }
+                  navigate(`/merchant/${customMerchant.id}`);
+                }}
+                className={`relative overflow-hidden rounded-2xl shadow-sm border group transition-all ${customStatus.isOpen
+                  ? 'border-blue-100 cursor-pointer active:scale-95 bg-gradient-to-br from-blue-50 to-indigo-50'
+                  : 'border-gray-200 cursor-not-allowed bg-gradient-to-br from-gray-50 to-gray-100 opacity-80'
+                  }`}
               >
                 <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
                 <div className="absolute bottom-0 left-0 w-24 h-24 bg-indigo-500/10 rounded-full blur-2xl -ml-10 -mb-10"></div>
                 <div className="p-4 flex items-center justify-between relative z-10">
                   <div className="flex-1 pr-4">
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-600 text-white font-bold text-[9px] mb-2 shadow-sm animate-pulse">
-                      <Star size={10} className="fill-current text-yellow-300" /> Paling Sering Dipesan
-                    </div>
+                    {customStatus.isOpen ? (
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-600 text-white font-bold text-[9px] mb-2 shadow-sm animate-pulse">
+                        <Star size={10} className="fill-current text-yellow-300" /> Paling Sering Dipesan
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gray-400 text-white font-bold text-[9px] mb-2 shadow-sm">
+                        🔒 Sedang Tutup
+                      </div>
+                    )}
                     <h3 className="text-[15px] font-extrabold text-gray-900 leading-tight mb-1.5 drop-shadow-sm">
                       Bebas Pesan Apa Aja!
                     </h3>
                     <p className="text-[11px] font-semibold text-gray-600 leading-snug mb-3">
-                      Ga nemu barangnya? Ketik atau lampirin foto aja, kurir siap beliin.
+                      {customStatus.isOpen
+                        ? 'Ga nemu barangnya? Ketik atau lampirin foto aja, kurir siap beliin.'
+                        : `Layanan dibuka kembali pukul ${customStatus.hoursText}`
+                      }
                     </p>
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold text-[10px] shadow-sm shadow-blue-500/20 group-hover:bg-blue-700 transition-colors">
-                      Pesan Sekarang
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
-                    </div>
+                    {customStatus.isOpen ? (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold text-[10px] shadow-sm shadow-blue-500/20 group-hover:bg-blue-700 transition-colors">
+                        Pesan Sekarang
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gray-300 text-gray-600 font-bold text-[10px]">
+                        Tidak Tersedia
+                      </div>
+                    )}
                   </div>
-                  <div className="w-20 h-20 shrink-0 relative mt-2">
+                  <div className={`w-20 h-20 shrink-0 relative mt-2 ${!customStatus.isOpen ? 'grayscale opacity-60' : ''}`}>
                     <div className="absolute inset-0 bg-white/60 rounded-2xl shadow-sm rotate-6 group-hover:rotate-12 transition-transform duration-300"></div>
-                    <img 
-                      src="/banner-custom-order.webp" 
+                    <img
+                      src="/banner-custom-order.webp"
                       className="w-full h-full object-cover rounded-2xl absolute inset-0 -rotate-3 group-hover:rotate-0 transition-transform duration-300 shadow-sm border border-white/50"
                       alt="Custom Order"
                     />
@@ -510,15 +540,28 @@ export default function Home() {
                           {displayProducts.map(product => (
                             <div
                               key={product.id}
-                              onClick={() => navigate(`/product/${product.id}`, { state: { merchant } })}
-                              className="w-28 sm:w-32 shrink-0 bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm flex flex-col snap-start cursor-pointer active:scale-95 transition-transform"
+                              onClick={() => {
+                                if (!storeStatus.isOpen) {
+                                  toast.error(`Mohon maaf, toko ini sedang Tutup. Buka kembali pukul ${storeStatus.hoursText}`, { icon: '🔒' });
+                                  return;
+                                }
+                                navigate(`/product/${product.id}`, { state: { merchant } });
+                              }}
+                              className={`w-28 sm:w-32 shrink-0 bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm flex flex-col snap-start transition-transform ${
+                                storeStatus.isOpen ? 'cursor-pointer active:scale-95' : 'cursor-not-allowed'
+                              }`}
                             >
                               <div className="h-24 w-full bg-gray-100 relative">
                                 {product.image_url ? (
-                                  <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                                  <img src={product.image_url} alt={product.name} className={`w-full h-full object-cover ${!storeStatus.isOpen ? 'grayscale opacity-70' : ''}`} />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-gray-300">
                                     <Store size={20} />
+                                  </div>
+                                )}
+                                {!storeStatus.isOpen && (
+                                  <div className="absolute inset-0 flex items-end justify-center pb-1.5">
+                                    <span className="bg-black/60 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full">Tutup</span>
                                   </div>
                                 )}
                               </div>
@@ -534,7 +577,7 @@ export default function Home() {
                                     {product.favorite_count || 0}
                                   </div>
                                 </div>
-                                <p className="text-[10px] sm:text-xs font-semibold text-primary">
+                                <p className={`text-[10px] sm:text-xs font-semibold ${storeStatus.isOpen ? 'text-primary' : 'text-gray-400'}`}>
                                   {product.price > 0 ? `Rp ${product.price.toLocaleString('id-ID')}` : 'Harga Menyesuaikan'}
                                 </p>
                               </div>
@@ -543,13 +586,23 @@ export default function Home() {
 
                           {/* Card Lihat Semua Produk */}
                           <div
-                            onClick={() => navigate(`/merchant/${merchant.id}`)}
-                            className="w-24 sm:w-28 shrink-0 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-xl shadow-sm flex flex-col items-center justify-center snap-start cursor-pointer active:scale-95 transition-transform p-3 text-center"
+                            onClick={() => {
+                              if (!storeStatus.isOpen) {
+                                toast.error(`Mohon maaf, toko ini sedang Tutup. Buka kembali pukul ${storeStatus.hoursText}`, { icon: '🔒' });
+                                return;
+                              }
+                              navigate(`/merchant/${merchant.id}`);
+                            }}
+                            className={`w-24 sm:w-28 shrink-0 border rounded-xl shadow-sm flex flex-col items-center justify-center snap-start transition-transform p-3 text-center ${
+                              storeStatus.isOpen
+                                ? 'bg-blue-50 hover:bg-blue-100 border-blue-200 cursor-pointer active:scale-95'
+                                : 'bg-gray-50 border-gray-200 cursor-not-allowed opacity-60'
+                            }`}
                           >
-                            <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-primary shadow-sm mb-2">
+                            <div className={`w-8 h-8 rounded-full bg-white flex items-center justify-center shadow-sm mb-2 ${storeStatus.isOpen ? 'text-primary' : 'text-gray-400'}`}>
                               <ArrowRight size={16} />
                             </div>
-                            <span className="text-[10px] font-semibold text-primary leading-tight">Lihat semua<br />Produk</span>
+                            <span className={`text-[10px] font-semibold leading-tight ${storeStatus.isOpen ? 'text-primary' : 'text-gray-400'}`}>Lihat semua<br />Produk</span>
                           </div>
                         </div>
                       </div>

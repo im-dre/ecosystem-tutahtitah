@@ -2,6 +2,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import MainLayout from './components/MainLayout';
 import Home from './pages/Home';
 import Auth from './pages/Auth';
+import ForgotPassword from './pages/ForgotPassword';
+import UpdatePassword from './pages/UpdatePassword';
 import Profile from './pages/Profile';
 import Cart from './pages/Cart';
 import Activity from './pages/Activity';
@@ -64,6 +66,14 @@ function App() {
           <Route 
             path="/auth" 
             element={!session ? <Auth /> : <Navigate to="/" replace />} 
+          />
+          <Route 
+            path="/forgot-password" 
+            element={!session ? <ForgotPassword /> : <Navigate to="/" replace />} 
+          />
+          <Route 
+            path="/update-password" 
+            element={<UpdatePassword />} 
           />
 
           {/* Protected Routes with MainLayout */}

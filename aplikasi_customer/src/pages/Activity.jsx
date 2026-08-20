@@ -168,6 +168,7 @@ export default function Activity() {
       // Menggunakan syntax relasi spesifik foreign key jika ada ambiguitas
       .select('*, employees!assigned_courier_id(full_name), merchants(id, name, logo_url)')
       .eq('customer_id', userId)
+      .neq('is_deleted', true)  // Jangan tampilkan order yang sudah dihapus admin
       .order('id', { ascending: false });
 
     if (error) {
@@ -198,7 +199,12 @@ export default function Activity() {
       .order('created_at', { ascending: false });
 
     if (!error && data) {
-      setFavoriteProducts(data);
+      // Filter produk yang sudah dihapus (products null) atau tidak tersedia
+      const filtered = data.filter(fp => {
+        const product = Array.isArray(fp.products) ? fp.products[0] : fp.products;
+        return product && product.is_available !== false;
+      });
+      setFavoriteProducts(filtered);
     }
   };
 

@@ -2,8 +2,29 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { useCart } from '../context/CartContext';
-import { ArrowLeft, Package, Minus, Plus, ShoppingBag, Receipt, Trash2, Heart, Star } from 'lucide-react';
+import { ArrowLeft, Package, Minus, Plus, ShoppingBag, Receipt, Trash2, Heart, Star, Clock } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+
+// Helper cek status buka/tutup merchant
+const getMerchantStatus = (merchant, currentTime) => {
+  if (!merchant || !merchant.operating_hours || !Array.isArray(merchant.operating_hours)) {
+    return { isOpen: true, hoursText: '08:00 - 21:00 WIB' };
+  }
+  const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+  const today = days[currentTime.getDay()];
+  const todayHours = merchant.operating_hours.find(h => h.day === today);
+  const isOpenStr = todayHours && (todayHours.is_open === true || todayHours.is_open === 'true' || todayHours.is_open === 'on');
+  if (!isOpenStr) return { isOpen: false, hoursText: 'Tutup Hari Ini' };
+  const openTimeStr = todayHours.open || '08:00';
+  const closeTimeStr = todayHours.close || '21:00';
+  const [openH, openM] = openTimeStr.split(':').map(Number);
+  const [closeH, closeM] = closeTimeStr.split(':').map(Number);
+  const currentMins = currentTime.getHours() * 60 + currentTime.getMinutes();
+  const openMins = (openH || 0) * 60 + (openM || 0);
+  const closeMins = (closeH || 0) * 60 + (closeM || 0);
+  const isOpen = currentMins >= openMins && currentMins <= closeMins;
+  return { isOpen, hoursText: `${openTimeStr} - ${closeTimeStr} WIB` };
+};
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -141,6 +162,11 @@ export default function ProductDetail() {
   const totalQty = selections.reduce((sum, sel) => sum + sel.qty, 0);
 
   const handleAddToCart = () => {
+    const merchantStatus = getMerchantStatus(merchant, new Date());
+    if (!merchantStatus.isOpen) {
+      toast.error(`Mohon maaf, toko ini sedang Tutup. Buka kembali pukul ${merchantStatus.hoursText}`, { icon: '🔒' });
+      return;
+    }
     selections.forEach(sel => {
       const itemToAdd = {
         ...product,
@@ -153,6 +179,11 @@ export default function ProductDetail() {
   };
 
   const handleBuyNow = () => {
+    const merchantStatus = getMerchantStatus(merchant, new Date());
+    if (!merchantStatus.isOpen) {
+      toast.error(`Mohon maaf, toko ini sedang Tutup. Buka kembali pukul ${merchantStatus.hoursText}`, { icon: '🔒' });
+      return;
+    }
     // Validate selections
     for (const sel of selections) {
       if (product.variants && Array.isArray(product.variants)) {
@@ -228,18 +259,7 @@ export default function ProductDetail() {
         </button>
       </div>
       
-      <div className="absolute top-4 right-4 z-20 flex items-center gap-3">
-        <button 
-          onClick={handleToggleFavorite} 
-          disabled={isTogglingFavorite}
-          className="w-10 h-10 bg-white/70 backdrop-blur-md rounded-full flex items-center justify-center hover:bg-white/90 active:scale-95 transition-all shadow-sm disabled:opacity-50"
-        >
-          <Heart 
-            size={22} 
-            className={`transition-colors ${isFavorite ? 'fill-red-500 text-red-500' : 'text-gray-700'}`} 
-          />
-        </button>
-      </div>
+
 
       {/* Hero Image */}
       <div className="relative w-full aspect-square bg-white flex items-center justify-center overflow-hidden">
@@ -259,15 +279,28 @@ export default function ProductDetail() {
               <span className="text-sm font-bold text-yellow-700">{product.rating_score ? Number(product.rating_score).toFixed(1) : '0.0'}</span>
               <span className="text-[11px] font-medium text-yellow-600 border-l border-yellow-200 pl-1.5">({product.total_ratings || 0} Ulasan)</span>
             </div>
-            <div className="flex items-center gap-1.5 bg-gray-50 px-2 py-1 rounded-lg">
-              <Heart size={14} className="text-gray-400" />
-              <span className="text-[11px] font-medium text-gray-600">{product.favorite_count || 0} Disukai</span>
-            </div>
           </div>
-          <p className="text-xl sm:text-2xl font-bold text-primary">
-            Rp {product.price.toLocaleString('id-ID')}
-            {product.variants && product.variants.some(g => g.has_price) && <span className="text-sm font-medium text-gray-500 ml-1">mulai dari</span>}
-          </p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xl sm:text-2xl font-bold text-primary">
+              Rp {product.price.toLocaleString('id-ID')}
+              {product.variants && product.variants.some(g => g.has_price) && <span className="text-sm font-medium text-gray-500 ml-1">mulai dari</span>}
+            </p>
+            <button
+              onClick={handleToggleFavorite}
+              disabled={isTogglingFavorite}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border transition-all active:scale-95 disabled:opacity-50 shrink-0 ${
+                isFavorite
+                  ? 'bg-red-50 border-red-200 text-red-500'
+                  : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-red-50 hover:border-red-200 hover:text-red-500'
+              }`}
+            >
+              <Heart
+                size={18}
+                className={`transition-colors ${isFavorite ? 'fill-red-500 text-red-500' : ''}`}
+              />
+              <span className="text-xs font-bold">{product.favorite_count || 0}</span>
+            </button>
+          </div>
         </div>
 
         {product.description && (
@@ -374,23 +407,40 @@ export default function ProductDetail() {
           <div className="w-full bg-gray-100 text-gray-500 font-bold py-3 rounded-xl text-center text-sm border border-gray-200">
             Produk Sedang Habis
           </div>
-        ) : (
-          <div className="flex gap-2">
-            <button
-              onClick={handleAddToCart}
-              className="flex-1 bg-white hover:bg-blue-50 text-primary font-semibold py-2.5 rounded-xl border border-primary transition-all text-sm flex items-center justify-center gap-2 active:scale-95"
-            >
-              <ShoppingBag size={18} /> Keranjang
-            </button>
+        ) : (() => {
+          const merchantStatus = getMerchantStatus(merchant, new Date());
+          if (!merchantStatus.isOpen) {
+            return (
+              <div className="w-full bg-red-50 border border-red-200 rounded-xl py-3 px-4 flex items-center gap-3">
+                <div className="w-9 h-9 bg-red-100 rounded-full flex items-center justify-center shrink-0">
+                  <Clock size={16} className="text-red-500" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-red-700 font-bold text-xs">Toko Sedang Tutup</p>
+                  <p className="text-red-500 text-[10px] font-medium">Buka kembali pukul {merchantStatus.hoursText}</p>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div className="flex gap-2">
+              <button
+                onClick={handleAddToCart}
+                className="flex-1 bg-white hover:bg-blue-50 text-primary font-semibold py-2.5 rounded-xl border border-primary transition-all text-sm flex items-center justify-center gap-2 active:scale-95"
+              >
+                <ShoppingBag size={18} /> Keranjang
+              </button>
   
-            <button
-              onClick={handleBuyNow}
-              className="flex-1 bg-primary hover:bg-blue-700 text-white font-semibold py-2.5 rounded-xl shadow-md shadow-blue-500/20 transition-all text-sm flex items-center justify-center gap-2 active:scale-95"
-            >
-              <Receipt size={18} /> Pesan Langsung
-            </button>
-          </div>
-        )}
+              <button
+                onClick={handleBuyNow}
+                className="flex-1 bg-primary hover:bg-blue-700 text-white font-semibold py-2.5 rounded-xl shadow-md shadow-blue-500/20 transition-all text-sm flex items-center justify-center gap-2 active:scale-95"
+              >
+                <Receipt size={18} /> Pesan Langsung
+              </button>
+            </div>
+          );
+        })()
+        }
       </div>
     </div>
   );
