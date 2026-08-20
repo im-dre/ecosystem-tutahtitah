@@ -339,7 +339,11 @@ export default function Activity() {
             const { data } = await supabase.from('orders').select('*, employees!assigned_courier_id(full_name)').eq('id', payload.new.id).single();
             if (data) setOrders((prev) => [data, ...prev]);
           } else if (payload.eventType === 'UPDATE') {
-            await fetchSingleOrder(payload.new.id);
+            if (payload.new.is_deleted === true) {
+              setOrders((prev) => prev.filter((order) => order.id !== payload.new.id));
+            } else {
+              await fetchSingleOrder(payload.new.id);
+            }
           } else if (payload.eventType === 'DELETE') {
             setOrders((prev) => prev.filter((order) => order.id !== payload.old.id));
           }

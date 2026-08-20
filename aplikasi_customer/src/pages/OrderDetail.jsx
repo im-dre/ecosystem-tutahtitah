@@ -132,6 +132,11 @@ export default function OrderDetail() {
         .single();
 
       if (error) throw error;
+      if (data.is_deleted) {
+        toast.error('Pesanan tidak ditemukan atau telah dihapus.');
+        navigate('/activity');
+        return;
+      }
       setOrder(data);
 
       const { data: ratingData } = await supabase
@@ -154,7 +159,12 @@ export default function OrderDetail() {
         'postgres_changes',
         { event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${id}` },
         async (payload) => {
-          fetchOrder();
+          if (payload.new.is_deleted === true) {
+            toast.error('Pesanan telah dihapus oleh Admin.');
+            navigate('/activity');
+          } else {
+            fetchOrder();
+          }
         }
       )
       .subscribe();

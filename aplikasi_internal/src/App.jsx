@@ -56,9 +56,16 @@ export default function App() {
     const [allOrders, setAllOrders] = useState([]);
     const [couriersList, setCouriersList] = useState([]);
     const [customersList, setCustomersList] = useState([]);
+    const [courierRatingStats, setCourierRatingStats] = useState({});
+    const [orderRatings, setOrderRatings] = useState({});
 
     const [adminProfitShare, setAdminProfitShare] = useState(10);
     const [kasShare, setKasShare] = useState(10);
+
+    // === STATE TOGGLE BUKA/TUTUP CUSTOM ORDER ===
+    const [isCustomOrderOpen, setIsCustomOrderOpen] = useState(true);
+    const [isTogglingCustomOrder, setIsTogglingCustomOrder] = useState(false);
+    const [customOrderMerchantId, setCustomOrderMerchantId] = useState(null);
 
     const [adminMainTab, setAdminMainTab] = useState('operasional');
     const [adminOperasionalTab, setAdminOperasionalTab] = useState('pending');
@@ -86,6 +93,55 @@ export default function App() {
             ...prev,
             [storeId]: !prev[storeId]
         }));
+    };
+
+    // === FUNGSI LOAD & TOGGLE STATUS CUSTOM ORDER ===
+    const loadCustomOrderStatus = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('merchants')
+                .select('id, operating_hours')
+                .eq('is_custom_order', true)
+                .maybeSingle();
+            if (error || !data) return;
+            setCustomOrderMerchantId(data.id);
+            // Cek apakah ada hari yang is_open = true di operating_hours
+            if (Array.isArray(data.operating_hours)) {
+                const anyOpen = data.operating_hours.some(h => h.is_open === true || h.is_open === 'true' || h.is_open === 'on');
+                setIsCustomOrderOpen(anyOpen);
+            } else {
+                setIsCustomOrderOpen(true); // Default buka jika belum diatur
+            }
+        } catch (e) {
+            console.error('Error loading custom order status:', e);
+        }
+    };
+
+    const handleToggleCustomOrder = async () => {
+        if (!customOrderMerchantId || isTogglingCustomOrder) return;
+        setIsTogglingCustomOrder(true);
+        const newStatus = !isCustomOrderOpen;
+        try {
+            const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+            const newOperatingHours = days.map(day => ({
+                day,
+                is_open: newStatus,
+                open: '08:00',
+                close: '21:00'
+            }));
+            const { error } = await supabase
+                .from('merchants')
+                .update({ operating_hours: newOperatingHours })
+                .eq('id', customOrderMerchantId);
+            if (error) throw error;
+            setIsCustomOrderOpen(newStatus);
+            toast.success(newStatus ? '✅ Layanan Custom Order DIBUKA!' : '🔒 Layanan Custom Order DITUTUP!');
+        } catch (e) {
+            console.error('Error toggling custom order:', e);
+            toast.error('Gagal mengubah status layanan.');
+        } finally {
+            setIsTogglingCustomOrder(false);
+        }
     };
 
     const fetchPortalData = async () => {
@@ -723,6 +779,7 @@ export default function App() {
 
     useEffect(() => {
         checkInitialSetup();
+        loadCustomOrderStatus(); // Load status buka/tutup custom order
 
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session) {
@@ -925,7 +982,7 @@ export default function App() {
     const fetchAllHistoricalOrders = async () => {
         setLoading(true);
         try {
-            const { data: ordersData } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
+            const { data: ordersData } = await supabase.from("orders").select("*").eq("is_deleted", false).order("created_at", { ascending: false });
             if (ordersData) setAllOrders(ordersData);
             toast.success("Berhasil memuat seluruh riwayat pesanan");
         } catch (error) {
@@ -941,10 +998,24 @@ export default function App() {
         try {
             const oneMonthAgo = new Date();
             oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-            const { data: ordersData } = await supabase.from("orders").select("*").gte('created_at', oneMonthAgo.toISOString()).order("created_at", { ascending: false });
+            const { data: ordersData } = await supabase.from("orders").select("*").gte('created_at', oneMonthAgo.toISOString()).eq("is_deleted", false).order("created_at", { ascending: false });
             const { data: couriersData } = await supabase.from("employees").select("*").eq("role", "courier");
             const { data: allEmpData } = await supabase.from("employees").select("*").order("role", { ascending: true });
             const { data: customersData } = await supabase.from("customers").select("*");
+            const { data: rawRatingsData } = await supabase.from("ratings").select("*").eq("target_type", "courier");
+            
+            // Filter out ratings from soft-deleted AND hard-deleted orders manually
+            let validOrderIds = new Set();
+            if (rawRatingsData && rawRatingsData.length > 0) {
+                const orderIds = [...new Set(rawRatingsData.map(r => r.order_id).filter(id => id != null))];
+                if (orderIds.length > 0) {
+                    const { data: existingOrders } = await supabase.from("orders").select("id, is_deleted").in("id", orderIds);
+                    if (existingOrders) {
+                        validOrderIds = new Set(existingOrders.filter(o => o.is_deleted !== true).map(o => o.id));
+                    }
+                }
+            }
+            const ratingsData = rawRatingsData ? rawRatingsData.filter(r => validOrderIds.has(r.order_id)) : null;
 
             if (user && user.role === 'courier') {
                 const { data: myProfile } = await supabase.from('employees').select('*').eq('id', user.id).maybeSingle();
@@ -960,6 +1031,24 @@ export default function App() {
             if (couriersData) setCouriersList(couriersData);
             if (allEmpData) setAllEmployees(allEmpData);
             if (customersData) setCustomersList(customersData);
+            if (ratingsData) {
+                const stats = {};
+                const ordRatings = {};
+                ratingsData.forEach(r => {
+                    if (r.order_id) ordRatings[r.order_id] = r;
+                    if (r.target_id) {
+                        if (!stats[r.target_id]) stats[r.target_id] = { sum: 0, count: 0 };
+                        stats[r.target_id].sum += r.rating;
+                        stats[r.target_id].count += 1;
+                    }
+                });
+                const finalStats = {};
+                for (const [id, data] of Object.entries(stats)) {
+                    finalStats[id] = { average: (data.sum / data.count).toFixed(1), count: data.count };
+                }
+                setCourierRatingStats(finalStats);
+                setOrderRatings(ordRatings);
+            }
             if (settingsData) {
                 setAdminProfitShare(settingsData.profit_share !== undefined ? settingsData.profit_share : 10);
                 setKasShare(settingsData.kas_share !== undefined ? settingsData.kas_share : 10);
@@ -1009,6 +1098,10 @@ export default function App() {
                 }
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (p) => {
+                if (p.new.is_deleted === true) {
+                    setAllOrders(prev => prev.filter(o => o.id !== p.new.id));
+                    return;
+                }
                 setAllOrders(prev => prev.map(o => o.id === p.new.id ? p.new : o));
                 const oldStatus = p.old?.status;
                 const newStatus = p.new?.status;
@@ -1390,7 +1483,7 @@ export default function App() {
         if (!result.isConfirmed) return;
 
         try {
-            const { error } = await supabase.from('orders').delete().eq('id', orderId);
+            const { error } = await supabase.from('orders').update({ is_deleted: true }).eq('id', orderId);
             if (error) throw error;
             setAllOrders(prev => prev.filter(o => o.id !== orderId));
             showNotif("Orderan berhasil dihapus permanen!", "success");
@@ -2001,6 +2094,14 @@ export default function App() {
                                                     <h3 className="font-bold text-gray-900 text-sm sm:text-lg leading-tight line-clamp-2">{emp.full_name}</h3>
                                                     <p className="text-[8px] sm:text-[9px] text-gray-400 font-bold mb-2 mt-0.5">🗓️ Join: {emp.created_at ? new Date(emp.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</p>
 
+                                                    {emp.role === 'courier' && (
+                                                        <div className="flex items-center gap-1.5 mb-2 bg-yellow-50/50 w-max px-2 py-1 rounded border border-yellow-100">
+                                                            <span className="text-yellow-400 text-xs">⭐</span>
+                                                            <span className="text-[10px] font-bold text-gray-700">{courierRatingStats[emp.id]?.average || '0.0'}</span>
+                                                            <span className="text-[9px] text-gray-400">({courierRatingStats[emp.id]?.count || 0})</span>
+                                                        </div>
+                                                    )}
+
                                                     <div className="flex flex-col gap-0.5 mt-2">
                                                         <p className="text-[9px] sm:text-xs text-gray-600 font-medium flex items-center gap-1.5"><span className="text-gray-400">📱</span> <span className="truncate">{emp.phone || '-'}</span></p>
                                                         <p className="text-[9px] sm:text-xs text-gray-600 font-medium flex items-center gap-1.5"><span className="text-gray-400">📧</span> <span className="truncate">{emp.email || '-'}</span></p>
@@ -2601,6 +2702,32 @@ export default function App() {
                                         </div>
                                     </div>
 
+                                    {/* CARD TOGGLE BUKA/TUTUP CUSTOM ORDER */}
+                                    <div className={`p-4 rounded-2xl border-2 shadow-sm flex items-center justify-between gap-4 transition-all ${isCustomOrderOpen ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shadow-sm ${isCustomOrderOpen ? 'bg-green-100' : 'bg-red-100'}`}>
+                                                {isCustomOrderOpen ? '🟢' : '🔴'}
+                                            </div>
+                                            <div>
+                                                <h3 className={`font-bold text-sm ${isCustomOrderOpen ? 'text-green-800' : 'text-red-800'}`}>
+                                                    Layanan Custom Order (Belanja Pasar/Warung)
+                                                </h3>
+                                                <p className={`text-[10px] font-medium ${isCustomOrderOpen ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {isCustomOrderOpen
+                                                        ? '✅ Sedang BUKA — Customer bisa memesan sekarang'
+                                                        : '🔒 Sedang TUTUP — Customer tidak bisa memesan'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={handleToggleCustomOrder}
+                                            disabled={isTogglingCustomOrder || !customOrderMerchantId}
+                                            className={`relative shrink-0 w-14 h-7 rounded-full transition-all duration-300 shadow-inner focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${isCustomOrderOpen ? 'bg-green-500' : 'bg-gray-300'}`}
+                                        >
+                                            <div className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-all duration-300 ${isCustomOrderOpen ? 'left-7' : 'left-0.5'}`}></div>
+                                        </button>
+                                    </div>
+
                                     <div className="flex gap-2 p-1 bg-gray-200 rounded-xl w-full sm:w-max">
                                         <button onClick={() => setAdminOperasionalTab('pending')} className={`flex-1 sm:flex-none px-6 py-2.5 rounded-lg font-bold text-sm transition ${adminOperasionalTab === 'pending' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
                                             📥 Order Masuk ({adminPendingOrders.length})
@@ -2646,6 +2773,7 @@ export default function App() {
                                                             placeholder="-- Pilih Kurir yang Jalan --"
                                                             couriersList={couriersList}
                                                             activeCourierCounts={activeCourierCounts}
+                                                            courierRatingStats={courierRatingStats}
                                                         />
 
                                                         <div className="flex gap-2 mt-2">
@@ -2730,6 +2858,7 @@ export default function App() {
                                                                         bgClass="bg-white"
                                                                         couriersList={couriersList}
                                                                         activeCourierCounts={activeCourierCounts}
+                                                                        courierRatingStats={courierRatingStats}
                                                                     />
                                                                     <div className="flex gap-2 mt-2">
                                                                         <button
@@ -2919,6 +3048,25 @@ export default function App() {
                                                                         <span className="text-gray-500">Ongkir/Jasa:</span>
                                                                         <span className="text-emerald-600 text-sm notranslate">Rp {parseInt(o.delivery_fee || 0).toLocaleString('id-ID')}</span>
                                                                     </div>
+                                                                    
+                                                                    {orderRatings[o.id] && (
+                                                                        <div className="mt-2 pt-2 border-t border-gray-100">
+                                                                            <div className="flex items-center gap-1 mb-1.5">
+                                                                                <span className="text-[10px] font-bold text-gray-500 mr-1">Rating Customer:</span>
+                                                                                <span className="text-yellow-400 text-xs">{"⭐".repeat(orderRatings[o.id].rating)}</span>
+                                                                                <span className="text-gray-300 text-xs">{"⭐".repeat(5 - orderRatings[o.id].rating)}</span>
+                                                                            </div>
+                                                                            {orderRatings[o.id].review && (
+                                                                                <details className="text-[10px] text-gray-600 bg-gray-50 rounded border border-gray-100 group transition-all">
+                                                                                    <summary className="cursor-pointer font-medium text-[#004aad] hover:bg-blue-50 p-2 outline-none select-none list-none relative flex justify-between items-center">
+                                                                                        <span><span className="group-open:hidden">Lihat</span><span className="hidden group-open:inline">Tutup</span> Ulasan</span>
+                                                                                        <span className="text-xs group-open:rotate-180 transition-transform">▼</span>
+                                                                                    </summary>
+                                                                                    <div className="p-2 pt-1 italic border-t border-gray-100">"{orderRatings[o.id].review}"</div>
+                                                                                </details>
+                                                                            )}
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             )}
                                                             <div className="text-[9px] text-gray-400 mt-3 font-bold text-right uppercase">Mitra Terakhir: {couriersList.find(c => c.id === o.assigned_courier_id)?.full_name || 'Tidak ada'}</div>
@@ -3693,6 +3841,25 @@ export default function App() {
                                                                                 <span className="text-gray-500">Ongkir/Jasa (Diterima):</span>
                                                                                 <span className="text-emerald-600 text-sm notranslate">Rp {parseInt(o.delivery_fee || 0).toLocaleString('id-ID')}</span>
                                                                             </div>
+                                                                            
+                                                                            {orderRatings[o.id] && (
+                                                                                <div className="mt-2 pt-2 border-t border-gray-100">
+                                                                                    <div className="flex items-center gap-1 mb-1.5">
+                                                                                        <span className="text-[10px] font-bold text-gray-500 mr-1">Rating Customer:</span>
+                                                                                        <span className="text-yellow-400 text-xs">{"⭐".repeat(orderRatings[o.id].rating)}</span>
+                                                                                        <span className="text-gray-300 text-xs">{"⭐".repeat(5 - orderRatings[o.id].rating)}</span>
+                                                                                    </div>
+                                                                                    {orderRatings[o.id].review && (
+                                                                                        <details className="text-[10px] text-gray-600 bg-gray-50 rounded border border-gray-100 group transition-all">
+                                                                                            <summary className="cursor-pointer font-medium text-[#004aad] hover:bg-blue-50 p-2 outline-none select-none list-none relative flex justify-between items-center">
+                                                                                                <span><span className="group-open:hidden">Lihat</span><span className="hidden group-open:inline">Tutup</span> Ulasan</span>
+                                                                                                <span className="text-xs group-open:rotate-180 transition-transform">▼</span>
+                                                                                            </summary>
+                                                                                            <div className="p-2 pt-1 italic border-t border-gray-100">"{orderRatings[o.id].review}"</div>
+                                                                                        </details>
+                                                                                    )}
+                                                                                </div>
+                                                                            )}
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -3776,6 +3943,28 @@ export default function App() {
                                                         <span className="text-xs font-bold text-white">Pendapatan Bersih</span>
                                                         <span className="text-2xl font-bold text-[#ffde59] notranslate">Rp {courierAnalytics.bersih.toLocaleString('id-ID')}</span>
                                                     </div>
+                                                </div>
+                                            </div>
+
+                                            {/* RATING SUMMARY CARD */}
+                                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 relative overflow-hidden flex items-center justify-between">
+                                                <div className="absolute top-0 right-0 -mt-8 -mr-8 w-32 h-32 bg-yellow-50 rounded-full opacity-50 pointer-events-none"></div>
+                                                <div className="relative z-10 flex items-center gap-3">
+                                                    <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center shadow-inner">
+                                                        <span className="text-2xl">⭐</span>
+                                                    </div>
+                                                    <div>
+                                                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-0.5">Rating Keseluruhan</h3>
+                                                        <div className="flex items-end gap-1.5">
+                                                            <span className="text-2xl font-black text-gray-900 leading-none">{courierRatingStats[user?.id]?.average || '0.0'}</span>
+                                                            <span className="text-[10px] font-bold text-gray-400 mb-1">/ 5.0</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="relative z-10 text-right">
+                                                    <span className="bg-gray-100 text-gray-600 px-2.5 py-1 rounded-lg text-[10px] font-bold">
+                                                        {courierRatingStats[user?.id]?.count || 0} Ulasan
+                                                    </span>
                                                 </div>
                                             </div>
 

@@ -17,6 +17,7 @@ const CustomCourierSelect = ({
   bgClass = "bg-gray-50",
   couriersList = [],
   activeCourierCounts = {},
+  courierRatingStats = {},
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const selected = couriersList.find((c) => c.id === value);
@@ -78,13 +79,20 @@ const CustomCourierSelect = ({
                     setIsOpen(false);
                   }}
                 >
-                  <span
-                    className={`font-bold ${
-                      value === c.id ? "text-[#004aad]" : "text-gray-700"
-                    }`}
-                  >
-                    {c.full_name}
-                  </span>
+                  <div className="flex flex-col">
+                    <span
+                      className={`font-bold ${
+                        value === c.id ? "text-[#004aad]" : "text-gray-700"
+                      }`}
+                    >
+                      {c.full_name}
+                    </span>
+                    {courierRatingStats[c.id] && courierRatingStats[c.id].count > 0 && (
+                      <span className="text-[9px] text-gray-500 font-medium flex items-center gap-0.5 mt-0.5">
+                        <span className="text-yellow-400">⭐</span> {courierRatingStats[c.id].average} ({courierRatingStats[c.id].count})
+                      </span>
+                    )}
+                  </div>
                   {count > 0 && (
                     <span className="bg-[#10b981]/10 text-[#10b981] border border-[#10b981]/30 px-2 py-1 rounded-md text-[9px] font-bold whitespace-nowrap shadow-sm">
                       {count} In progress

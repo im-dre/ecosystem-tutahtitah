@@ -17,6 +17,7 @@ export default function Orders() {
         .from('orders')
         .select('*')
         .eq('merchant_id', merchant.id)
+        .neq('is_deleted', true)
         .order('id', { ascending: false });
 
       if (error) {
@@ -49,6 +50,10 @@ export default function Orders() {
               style: { borderRadius: '12px', background: '#333', color: '#fff' }
             });
           } else if (payload.eventType === 'UPDATE') {
+            if (payload.new.is_deleted === true) {
+              setOrders((prev) => prev.filter((order) => order.id !== payload.new.id));
+              return;
+            }
             setOrders((prev) =>
               prev.map((order) => (order.id === payload.new.id ? payload.new : order))
             );

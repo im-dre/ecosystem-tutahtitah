@@ -326,7 +326,7 @@ export default function ChatRoom() {
       return;
     }
 
-    let query = supabase.from('orders').select('*, merchants(name, logo_url)').eq('customer_id', profile.id).order('created_at', { ascending: false });
+    let query = supabase.from('orders').select('*, merchants(name, logo_url)').eq('customer_id', profile.id).neq('is_deleted', true).order('created_at', { ascending: false });
     
     const { data } = await query;
     if (data) {
