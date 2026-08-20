@@ -5,14 +5,12 @@ import { useCart } from '../context/CartContext';
 import { ArrowLeft, Store, Package, Clock, MapPin, ShoppingBag, Search, ShoppingCart, Trash2, Camera, X, Heart, MessageSquare, Star, Users, Flag } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import useSWR from 'swr';
-import ReportModal from '../components/ReportModal';
 
 export default function MerchantDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { addToCart, cartItems = [], cartTotal = 0, cartCount = 0 } = useCart();
   const [isTogglingFavorite, setIsTogglingFavorite] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
   const [currentUserId, setCurrentUserId] = useState(null);
 
   // States for search and filter
@@ -554,22 +552,6 @@ export default function MerchantDetail() {
               <MessageSquare size={13} />
               Chat
             </button>
-
-            <button
-              onClick={async () => {
-                const { data: { user } } = await supabase.auth.getUser();
-                if (!user) {
-                  toast.error("Silakan login dulu untuk melaporkan toko");
-                  return;
-                }
-                setCurrentUserId(user.id);
-                setShowReportModal(true);
-              }}
-              className="w-8 h-8 bg-white/80 backdrop-blur-md border border-gray-200 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 active:scale-95 transition-all shadow-sm"
-              title="Laporkan Toko"
-            >
-              <Flag size={14} />
-            </button>
           </div>
         )}
       </div>
@@ -934,16 +916,6 @@ export default function MerchantDetail() {
           </div>
         </div>
       )}
-
-      {/* Report Modal */}
-      <ReportModal
-        isOpen={showReportModal}
-        onClose={() => setShowReportModal(false)}
-        targetId={merchant?.id}
-        targetType="merchant"
-        customerId={currentUserId}
-        targetName={merchant?.name}
-      />
     </div>
   );
 }

@@ -469,6 +469,8 @@ export default function App() {
   const [courierFilterService, setCourierFilterService] = useState('all'); 
   const [courierFilterStatus, setCourierFilterStatus] = useState('all'); 
   const [courierHistorySearch, setCourierHistorySearch] = useState(''); 
+  const [courierReports, setCourierReports] = useState([]); // Laporan pelanggaran untuk kurir ini
+
   
   // STATE MANAJEMEN TIM (HRD)
   const [allEmployees, setAllEmployees] = useState([]);
@@ -978,7 +980,21 @@ export default function App() {
           setAdminProfitShare(settingsData.profit_share !== undefined ? settingsData.profit_share : 10);
           setKasShare(settingsData.kas_share !== undefined ? settingsData.kas_share : 10);
       }
+      
+      // Fetch Laporan Kurir
+      if (user && user.role === 'courier') {
+          const { data: repData } = await supabase
+              .from('reports')
+              .select('*')
+              .eq('target_id', user.id)
+              .eq('target_type', 'courier')
+              .in('status', ['forwarded', 'resolved'])
+              .order('created_at', { ascending: false });
+          if (repData) setCourierReports(repData);
+      }
+
     } catch (err) { console.error(err); } finally { setLoading(false); }
+
   };
 
   const updateGlobalSettings = async (field, newVal) => {
@@ -989,6 +1005,28 @@ export default function App() {
           showNotif("Pengaturan terupdate Real-time!", "success");
       } catch (err) { console.error(err); }
   };
+
+  const handleSubmitFeedback = async (reportId, feedbackText) => {
+      if (!feedbackText.trim()) return toast.error("Feedback tidak boleh kosong");
+      const toastId = toast.loading("Mengirim tanggapan...");
+      try {
+          const { error } = await supabase
+              .from('reports')
+              .update({
+                  target_feedback: feedbackText,
+                  feedback_at: new Date().toISOString()
+              })
+              .eq('id', reportId);
+          
+          if (error) throw error;
+          toast.success("Tanggapan berhasil dikirim", { id: toastId });
+          fetchData();
+      } catch (error) {
+          console.error(error);
+          toast.error("Gagal mengirim tanggapan", { id: toastId });
+      }
+  };
+
 
   useEffect(() => {
     if (!user) return;
@@ -3226,6 +3264,12 @@ export default function App() {
                         )}
                     </button>
                     <button onClick={() => setCourierMainTab('riwayat')} className={`flex-1 py-2 rounded-full text-xs font-bold transition ${courierMainTab === 'riwayat' ? 'bg-[#ffde59] text-[#004aad]' : 'text-gray-500 hover:bg-gray-50'}`}>📈 Riwayat</button>
+                    <button onClick={() => setCourierMainTab('pelanggaran')} className={`flex-1 py-2 rounded-full text-xs font-bold transition flex items-center justify-center gap-1.5 ${courierMainTab === 'pelanggaran' ? 'bg-red-500 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>
+                        🚩 Pelanggaran
+                        {courierReports.filter(r => r.status === 'forwarded').length > 0 && (
+                            <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse border border-white"></span>
+                        )}
+                    </button>
                 </div>
             </div>
 
@@ -3616,6 +3660,76 @@ export default function App() {
                              </div>
                              )
                         })}
+                    </div>
+                )}
+
+                {/* TAB PELANGGARAN KURIR */}
+                {courierMainTab === 'pelanggaran' && (
+                    <div className="space-y-4">
+                        <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-2 mb-2">
+                            <h2 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                                <span className="text-xl">🚩</span> Pusat Pelanggaran
+                            </h2>
+                            <p className="text-xs text-gray-500">Laporan dari customer dan catatan/teguran dari admin.</p>
+                        </div>
+                        
+                        {courierReports.length === 0 ? (
+                            <div className="p-8 bg-white rounded-xl border border-gray-100 text-center shadow-sm">
+                                <span className="text-4xl block mb-2">✨</span>
+                                <h3 className="font-bold text-gray-800 text-sm">Tidak Ada Laporan</h3>
+                                <p className="text-gray-500 text-xs">Kerja bagus! Pertahankan performa Anda.</p>
+                            </div>
+                        ) : (
+                            courierReports.map((report) => (
+                                <div key={report.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col gap-3 relative">
+                                    <div className="flex justify-between items-start gap-2">
+                                        <div>
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase mb-1 inline-block ${report.status === 'forwarded' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
+                                                {report.status === 'forwarded' ? 'Butuh Tanggapan' : 'Selesai'}
+                                            </span>
+                                            <h3 className="font-bold text-gray-900 text-sm leading-tight">
+                                                Laporan masuk pada {new Date(report.created_at).toLocaleDateString('id-ID', {day:'numeric', month:'short'})}
+                                            </h3>
+                                        </div>
+                                    </div>
+                                    
+                                    {report.admin_notes && (
+                                        <div className="bg-red-50 p-3 rounded-xl border border-red-100">
+                                            <p className="text-[10px] text-red-500 font-bold mb-1 uppercase">Peringatan/Catatan Admin:</p>
+                                            <p className="text-sm text-red-900 font-medium">"{report.admin_notes}"</p>
+                                        </div>
+                                    )}
+
+                                    {report.target_feedback ? (
+                                        <div className="bg-blue-50 p-3 rounded-xl border border-blue-100">
+                                            <p className="text-[10px] text-blue-500 font-bold mb-1 uppercase">Tanggapan Anda:</p>
+                                            <p className="text-xs text-blue-900">"{report.target_feedback}"</p>
+                                        </div>
+                                    ) : (
+                                        <div className="mt-2 border-t border-gray-100 pt-3">
+                                            <label className="text-[10px] font-bold text-gray-500 uppercase block mb-1">
+                                                Kirim Tanggapan/Klarifikasi Anda:
+                                            </label>
+                                            <textarea 
+                                                id={`feedback-${report.id}`}
+                                                rows="2" 
+                                                className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium outline-none focus:border-[#004aad] shadow-sm mb-2"
+                                                placeholder="Tuliskan klarifikasi atau permintaan maaf Anda..."
+                                            ></textarea>
+                                            <button 
+                                                onClick={() => {
+                                                    const text = document.getElementById(`feedback-${report.id}`).value;
+                                                    handleSubmitFeedback(report.id, text);
+                                                }}
+                                                className="w-full bg-[#004aad] hover:bg-blue-700 text-white font-bold py-2 rounded-lg text-xs transition"
+                                            >
+                                                Kirim Tanggapan
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            ))
+                        )}
                     </div>
                 )}
             </div>

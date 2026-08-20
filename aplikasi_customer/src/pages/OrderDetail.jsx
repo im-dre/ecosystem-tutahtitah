@@ -1021,6 +1021,7 @@ export default function OrderDetail() {
         targetType={reportTargetType}
         customerId={user?.id}
         targetName={reportTargetName}
+        orderId={order?.id}
       />
     </div>
   );

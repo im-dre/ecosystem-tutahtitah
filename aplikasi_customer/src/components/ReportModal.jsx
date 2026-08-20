@@ -9,7 +9,8 @@ export default function ReportModal({
   targetId,
   targetType,
   customerId,
-  targetName
+  targetName,
+  orderId
 }) {
   const [reportReason, setReportReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -29,7 +30,8 @@ export default function ReportModal({
       customer_id: customerId,
       target_id: targetId,
       target_type: targetType,
-      reason: reportReason.trim()
+      reason: reportReason.trim(),
+      order_id: orderId || null
     });
 
     setIsSubmitting(false);
@@ -77,7 +79,9 @@ export default function ReportModal({
               <h3 className="font-bold text-gray-900 text-lg line-clamp-1">
                 Laporkan {targetName || (targetType === 'merchant' ? 'Toko' : 'Mitra')}
               </h3>
-              <p className="text-sm text-gray-500">Beritahu kami masalah yang terjadi.</p>
+              <p className="text-sm text-gray-500">
+                {orderId ? `Terkait Order #${orderId.toString().substring(0, 8)}` : 'Beritahu kami masalah yang terjadi.'}
+              </p>
             </div>
           </div>
 

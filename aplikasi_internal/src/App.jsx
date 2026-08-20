@@ -19,6 +19,7 @@ import ServiceBadge from "./components/ui/ServiceBadge";
 import SimpleTooltip from "./components/ui/SimpleTooltip";
 import CustomCourierSelect from "./components/ui/CustomCourierSelect";
 import EditOrderModal from "./components/modals/EditOrderModal";
+import ReportAttachmentModal from "./components/modals/ReportAttachmentModal";
 import HrModal from "./components/modals/HrModal";
 import ManualOrderModal from "./components/modals/ManualOrderModal";
 import KendalaModal from "./components/modals/KendalaModal";
@@ -76,6 +77,12 @@ export default function App() {
 
     const [adminHistorySearch, setAdminHistorySearch] = useState('');
     const [adminHistoryLimit, setAdminHistoryLimit] = useState(20);
+
+    // === STATE PENGADUAN (LAPORAN CUSTOMER) ===
+    const [reportsData, setReportsData] = useState([]);
+    const [isFetchingReports, setIsFetchingReports] = useState(false);
+    const [pengaduanFilterTab, setPengaduanFilterTab] = useState('all');
+
 
     // === STATE & FUNGSI MANAJEMEN PUBLIK (PORTAL UMKM & TESTIMONI) ===
     const [portalTab, setPortalTab] = useState('umkm');
@@ -141,6 +148,172 @@ export default function App() {
             toast.error('Gagal mengubah status layanan.');
         } finally {
             setIsTogglingCustomOrder(false);
+        }
+    };
+
+    const handleTeruskanPengaduan = async (report) => {
+        const { value: notes } = await Swal.fire({
+            title: 'Teruskan Laporan',
+            input: 'textarea',
+            inputLabel: 'Catatan untuk Terlapor (Kurir/Toko)',
+            inputPlaceholder: 'Masukkan pesan teguran/peringatan yang akan dilihat oleh pihak terlapor...',
+            showCancelButton: true,
+            confirmButtonText: 'Kirim',
+            cancelButtonText: 'Batal',
+            inputValidator: (value) => {
+                if (!value) {
+                    return 'Catatan tidak boleh kosong!'
+                }
+            }
+        });
+
+        if (notes) {
+            const toastId = toast.loading("Meneruskan laporan...");
+            try {
+                const { error } = await supabase
+                    .from('reports')
+                    .update({ 
+                        status: 'forwarded', 
+                        admin_notes: notes,
+                        forwarded_at: new Date().toISOString()
+                    })
+                    .eq('id', report.id);
+                
+                if (error) throw error;
+                toast.success("Laporan berhasil diteruskan", { id: toastId });
+                fetchReportsData();
+            } catch (error) {
+                console.error("Error forwarding report:", error);
+                toast.error("Gagal meneruskan laporan", { id: toastId });
+            }
+        }
+    };
+
+    const handleResolution = async (report, action) => {
+        const actionLabel = action === 'suspend' ? 'Suspend Akun' : 'Jadikan Peringatan';
+        const result = await Swal.fire({
+            title: `${actionLabel}?`,
+            text: action === 'suspend' 
+                ? `Apakah Anda yakin ingin MENSUSPEND ${report.target_type === 'merchant' ? 'toko/mitra' : 'kurir'} ini? Akun mereka akan dibekukan.`
+                : `Apakah Anda yakin ingin memberikan PERINGATAN kepada ${report.target_type === 'merchant' ? 'toko/mitra' : 'kurir'} ini?`,
+            icon: action === 'suspend' ? 'warning' : 'question',
+            showCancelButton: true,
+            confirmButtonColor: action === 'suspend' ? '#d33' : '#eab308',
+            cancelButtonColor: '#3085d6',
+            confirmButtonText: `Ya, ${actionLabel}`,
+            cancelButtonText: 'Batal'
+        });
+
+        if (result.isConfirmed) {
+            const toastId = toast.loading("Memproses keputusan...");
+            try {
+                // Update tabel reports
+                const { error: reportError } = await supabase
+                    .from('reports')
+                    .update({ status: 'resolved', resolution_action: action })
+                    .eq('id', report.id);
+                
+                if (reportError) throw reportError;
+
+                // Terapkan aksi ke target
+                if (report.target_type === 'courier') {
+                    if (action === 'suspend') {
+                        // Suspend kurir (tambah BANNED_ ke pin)
+                        const { data: empData } = await supabase.from('employees').select('pin').eq('id', report.target_id).single();
+                        if (empData && !empData.pin.startsWith('BANNED_')) {
+                            const newPin = "BANNED_" + empData.pin;
+                            await supabase.from('employees').update({ pin: newPin }).eq('id', report.target_id);
+                        }
+                    } else if (action === 'warning') {
+                        // Tambah warning_points kurir
+                        const { data: empData } = await supabase.from('employees').select('warning_points').eq('id', report.target_id).single();
+                        const currentPoints = empData?.warning_points || 0;
+                        await supabase.from('employees').update({ warning_points: currentPoints + 1 }).eq('id', report.target_id);
+                    }
+                } else if (report.target_type === 'merchant') {
+                    if (action === 'suspend') {
+                        // Suspend toko
+                        await supabase.from('merchants').update({ 
+                            status: 'suspended',
+                            alasan_suspend: 'Dilaporkan oleh customer atas pelanggaran pelayanan.'
+                        }).eq('id', report.target_id);
+                    } else if (action === 'warning') {
+                        // Tambah warning_points toko
+                        const { data: umkmData } = await supabase.from('merchants').select('warning_points').eq('id', report.target_id).single();
+                        const currentPoints = umkmData?.warning_points || 0;
+                        await supabase.from('merchants').update({ warning_points: currentPoints + 1 }).eq('id', report.target_id);
+                    }
+                }
+
+                toast.success(`Keputusan berhasil: ${actionLabel}`, { id: toastId });
+                fetchReportsData();
+                fetchPortalData();
+                fetchData();
+            } catch (error) {
+                console.error("Error resolving report:", error);
+                toast.error("Gagal memproses keputusan", { id: toastId });
+            }
+        }
+    };
+
+
+    const fetchReportsData = async () => {
+        setIsFetchingReports(true);
+        try {
+            const { data, error } = await supabase
+                .from('reports')
+                .select(`
+                    *,
+                    orders ( id, raw_order_text, status, kendala_info, is_deleted )
+                `)
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            setReportsData(data || []);
+        } catch (error) {
+            console.error('Error fetching reports:', error);
+            toast.error('Gagal mengambil data pengaduan');
+        } finally {
+            setIsFetchingReports(false);
+        }
+    };
+
+    const fetchCourierReportsData = async () => {
+        if (!user || user.role !== 'courier') return;
+        try {
+            const { data, error } = await supabase
+                .from('reports')
+                .select(`
+                    *,
+                    orders ( id, raw_order_text, status, kendala_info, is_deleted )
+                `)
+                .eq('target_id', user.id)
+                .eq('target_type', 'courier')
+                .in('status', ['forwarded', 'resolved'])
+                .order('created_at', { ascending: false });
+            if (!error && data) setCourierReports(data);
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    const handleSubmitFeedback = async (reportId, feedbackText) => {
+        if (!feedbackText.trim()) return toast.error("Feedback tidak boleh kosong");
+        const toastId = toast.loading("Mengirim tanggapan...");
+        try {
+            const { error } = await supabase
+                .from('reports')
+                .update({
+                    target_feedback: feedbackText,
+                    feedback_at: new Date().toISOString()
+                })
+                .eq('id', reportId);
+            
+            if (error) throw error;
+            toast.success("Tanggapan berhasil dikirim", { id: toastId });
+            fetchCourierReportsData();
+        } catch (error) {
+            console.error(error);
+            toast.error("Gagal mengirim tanggapan", { id: toastId });
         }
     };
 
@@ -443,6 +616,8 @@ export default function App() {
 
     const [dispatchInputs, setDispatchInputs] = useState({});
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [isAttachmentModalOpen, setIsAttachmentModalOpen] = useState(false);
+    const [attachmentOrder, setAttachmentOrder] = useState(null);
     const [editingOrder, setEditingOrder] = useState(null);
 
     // STATE BARU UNTUK BARIS DINAMIS EDITOR & FIELD CATATAN KHUSUS
@@ -508,6 +683,7 @@ export default function App() {
     const [courierMainTab, setCourierMainTab] = useState('tugas');
     const [courierFilterPeriod, setCourierFilterPeriod] = useState('month');
     const [courierChartPeriod, setCourierChartPeriod] = useState('daily');
+    const [courierReports, setCourierReports] = useState([]);
     const [courierFilterStartDate, setCourierFilterStartDate] = useState('');
     const [courierFilterEndDate, setCourierFilterEndDate] = useState('');
     const [courierFilterService, setCourierFilterService] = useState('all');
@@ -1082,6 +1258,8 @@ export default function App() {
     useEffect(() => {
         if (!user) return;
         fetchData(); requestNotificationPermission();
+        if (user.role === 'admin') fetchReportsData();
+        if (user.role === 'courier') fetchCourierReportsData();
 
         const channel = supabase.channel('realtime_all_tables')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (p) => {
@@ -1934,6 +2112,29 @@ export default function App() {
         );
     }
 
+    // Deteksi apakah kurir dibekukan
+    const isSuspended = courierProfile?.pin?.startsWith('BANNED_');
+
+    if (isSuspended) {
+        return (
+            <div className="min-h-screen bg-red-50 flex flex-col items-center justify-center p-6 text-center">
+                <div className="w-24 h-24 mb-6 text-red-500 bg-red-100 rounded-full flex items-center justify-center text-4xl shadow-md border-4 border-white">
+                    ⛔
+                </div>
+                <h1 className="text-3xl font-black text-red-700 mb-3 tracking-tight">AKUN DIBEKUKAN</h1>
+                <p className="text-red-900/80 mb-8 max-w-sm mx-auto font-medium leading-relaxed">
+                    Akses Anda ke sistem telah ditangguhkan sementara. Silakan hubungi tim Admin atau Manajemen Tutah Titah untuk informasi lebih lanjut dan proses pemulihan akun.
+                </p>
+                <button 
+                    onClick={() => supabase.auth.signOut()} 
+                    className="px-8 py-3.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg transition transform hover:scale-105 active:scale-95"
+                >
+                    Keluar Aplikasi
+                </button>
+            </div>
+        );
+    }
+
     return (
         <div className={`min-h-screen font-sans text-gray-800 flex flex-col ${user?.role === 'courier' ? 'bg-[#eef3fb]' : 'bg-gray-50'}`}>
             {/* Pasang Toaster di sini biar notifnya bisa melayang di seluruh aplikasi */}
@@ -2019,6 +2220,13 @@ export default function App() {
                                 <span className="leading-none mt-1 md:mt-0 md:hidden">Analitik</span>
                                 <span className="hidden md:inline">Laporan & Analitik</span>
                             </button>
+                            <button onClick={() => setAdminMainTab('pengaduan')} className={`flex flex-col md:flex-row items-center justify-center gap-1 py-1 md:px-4 md:py-3 font-bold text-[10px] md:text-sm w-full md:w-auto transition-all duration-300 md:border-b-2 whitespace-nowrap ${adminMainTab === 'pengaduan' ? 'text-red-600 md:border-red-600 -translate-y-1 md:translate-y-0' : 'text-gray-400 md:text-gray-500 md:border-transparent hover:text-gray-700 hover:bg-gray-50'}`}>
+                                <div className={`w-6 h-6 md:w-5 md:h-5 rounded-full flex items-center justify-center transition-all duration-300 ${adminMainTab === 'pengaduan' ? 'bg-red-100 text-red-600 scale-110 drop-shadow-sm md:scale-100 md:drop-shadow-none' : 'bg-gray-100 text-gray-400 grayscale opacity-60 scale-100'}`}>
+                                   <span className="text-[14px]">🚩</span>
+                                </div>
+                                <span className="leading-none mt-1 md:mt-0 md:hidden">Pengaduan</span>
+                                <span className="hidden md:inline">Pusat Pengaduan</span>
+                            </button>
                             <button onClick={() => setAdminMainTab('tim')} className={`flex flex-col md:flex-row items-center justify-center gap-1 py-1 md:px-4 md:py-3 font-bold text-[10px] md:text-sm w-full md:w-auto transition-all duration-300 md:border-b-2 whitespace-nowrap ${adminMainTab === 'tim' ? 'text-[#004aad] md:border-[#004aad] -translate-y-1 md:translate-y-0' : 'text-gray-400 md:text-gray-500 md:border-transparent hover:text-gray-700 hover:bg-gray-50'}`}>
                                 <img src="/tim-icon.webp" className={`w-6 h-6 md:w-5 md:h-5 object-contain transition-all duration-300 ${adminMainTab === 'tim' ? 'scale-110 drop-shadow-sm md:scale-100 md:drop-shadow-none' : 'grayscale opacity-60 scale-100'}`} alt="Tim" />
                                 <span className="leading-none mt-1 md:mt-0 md:hidden">Tim</span>
@@ -2032,6 +2240,132 @@ export default function App() {
                         </div>
 
                         <div className="p-4 sm:p-6">
+
+                            {/* TAB PUSAT PENGADUAN */}
+                            {adminMainTab === 'pengaduan' && (
+                                <div className="space-y-6">
+                                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                                        <div>
+                                            <h2 className="text-xl font-black text-gray-900 flex items-center gap-2">
+                                                <span className="text-2xl">🚩</span> Pusat Pengaduan
+                                            </h2>
+                                            <p className="text-sm text-gray-500 mt-1">Laporan dari customer terkait kurir atau toko.</p>
+                                        </div>
+                                        <div className="flex bg-gray-100 p-1 rounded-xl w-full md:w-auto">
+                                            {['all', 'pending', 'forwarded', 'resolved'].map((t) => (
+                                                <button
+                                                    key={t}
+                                                    onClick={() => setPengaduanFilterTab(t)}
+                                                    className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all ${pengaduanFilterTab === t ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                                >
+                                                    {t === 'all' ? 'Semua' : t === 'pending' ? 'Menunggu Analisa' : t === 'forwarded' ? 'Diteruskan' : 'Selesai'}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {isFetchingReports ? (
+                                        <div className="flex flex-col items-center justify-center p-10 bg-white rounded-2xl shadow-sm border border-gray-100">
+                                            <div className="w-12 h-12 border-4 border-red-100 border-t-red-500 rounded-full animate-spin"></div>
+                                            <p className="mt-4 font-bold text-gray-500">Memuat data pengaduan...</p>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {reportsData.filter(r => pengaduanFilterTab === 'all' || (r.orders?.is_deleted ? 'resolved' : r.status) === pengaduanFilterTab).length === 0 ? (
+                                                <div className="col-span-full p-10 bg-white rounded-2xl border border-gray-100 text-center">
+                                                    <span className="text-4xl block mb-2">✨</span>
+                                                    <h3 className="font-bold text-gray-800 text-lg">Tidak ada laporan</h3>
+                                                    <p className="text-gray-500 text-sm">Semua aman terkendali.</p>
+                                                </div>
+                                            ) : (
+                                                reportsData.filter(r => pengaduanFilterTab === 'all' || (r.orders?.is_deleted ? 'resolved' : r.status) === pengaduanFilterTab).map(report => {
+                                                    const displayStatus = report.orders?.is_deleted ? 'resolved' : report.status;
+                                                    const customerName = customersList.find(c => c.id === report.customer_id)?.name || 'Customer tidak diketahui';
+                                                    const targetName = report.target_type === 'merchant'
+                                                        ? (portalUmkmData.find(u => u.id === report.target_id)?.nama_toko || 'Toko tidak diketahui')
+                                                        : (couriersList.find(c => c.id === report.target_id)?.full_name || 'Kurir tidak diketahui');
+
+                                                    return (
+                                                        <div key={report.id} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col gap-3 relative">
+                                                            <div className="flex justify-between items-start gap-2">
+                                                                <div>
+                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${report.target_type === 'merchant' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                                            {report.target_type === 'merchant' ? 'Toko/Mitra' : 'Kurir'}
+                                                                        </span>
+                                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${displayStatus === 'pending' ? 'bg-yellow-100 text-yellow-700' : displayStatus === 'forwarded' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
+                                                                            {report.orders?.is_deleted ? 'Selesai (Order Dihapus)' : displayStatus === 'pending' ? 'Menunggu Analisa' : displayStatus === 'forwarded' ? 'Diteruskan' : 'Selesai'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <h3 className="font-bold text-gray-900 leading-tight">Terlapor: {targetName}</h3>
+                                                                    <p className="text-xs text-gray-500">Pelapor: {customerName} &bull; {new Date(report.created_at).toLocaleDateString('id-ID', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}</p>
+                                                                    {report.order_id && (
+                                                                        <p className="text-xs text-gray-500 mt-1">
+                                                                            Terkait Order: {' '}
+                                                                            <button 
+                                                                                onClick={() => {
+                                                                                    if (report.orders) {
+                                                                                    setAttachmentOrder({
+                                                                                            id: report.orders.id,
+                                                                                            text: report.orders.raw_order_text,
+                                                                                            status: report.orders.status,
+                                                                                            kendala_info: report.orders.kendala_info
+                                                                                        });
+                                                                                        setIsAttachmentModalOpen(true);
+                                                                                    }
+                                                                                }}
+                                                                                className="font-bold text-[#004aad] hover:underline"
+                                                                            >
+                                                                                #INV-{report.order_id.toString().substring(0, 8).toUpperCase()}
+                                                                            </button>
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            <div className="bg-red-50 p-3 rounded-xl border border-red-100">
+                                                                <p className="text-sm text-red-900 font-medium">"{report.reason}"</p>
+                                                            </div>
+
+                                                            {report.admin_notes && (
+                                                                <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                                                    <p className="text-[11px] text-gray-500 font-bold mb-1 uppercase">Catatan Admin (Untuk Terlapor):</p>
+                                                                    <p className="text-sm text-gray-700">{report.admin_notes}</p>
+                                                                </div>
+                                                            )}
+
+                                                            {report.target_feedback && (
+                                                                <div className="bg-blue-50 p-3 rounded-xl border border-blue-100">
+                                                                    <p className="text-[11px] text-blue-500 font-bold mb-1 uppercase">Feedback {report.target_type === 'merchant' ? 'Toko' : 'Kurir'}:</p>
+                                                                    <p className="text-sm text-blue-900 font-medium">"{report.target_feedback}"</p>
+                                                                </div>
+                                                            )}
+
+                                                            <div className="flex gap-2 mt-auto pt-2 border-t border-gray-100">
+                                                                {displayStatus === 'pending' && (
+                                                                    <button onClick={() => handleTeruskanPengaduan(report)} className="flex-1 bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold py-2 rounded-xl text-xs transition">
+                                                                        Teruskan Laporan
+                                                                    </button>
+                                                                )}
+                                                                {displayStatus !== 'resolved' && (
+                                                                    <div className="flex gap-2 w-full mt-2">
+                                                                        <button onClick={() => handleResolution(report, 'suspend')} className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2 rounded-xl text-xs transition shadow-sm">
+                                                                            Suspend Akun
+                                                                        </button>
+                                                                        <button onClick={() => handleResolution(report, 'warning')} className="flex-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 font-bold py-2 rounded-xl text-xs transition shadow-sm">
+                                                                            Jadikan Peringatan
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* TAB HRD / MANAJEMEN TIM KHUSUS ADMIN */}
                             {adminMainTab === 'tim' && (
@@ -3388,14 +3722,19 @@ export default function App() {
                                         { key: 'tugas', icon: '/dekstop-icon.webp', label: 'Live Orderan', badge: courierActiveOrders.length },
                                         { key: 'riwayat', icon: '/clock-icon.webp', label: 'Riwayat Order' },
                                         { key: 'analitik', icon: '/chart-icon.webp', label: 'Laporan Analitik' },
+                                        { key: 'pelanggaran', emoji: '🚩', label: 'Pelanggaran', badge: courierReports.filter(r => r.status === 'forwarded').length },
                                         { key: 'profil', icon: '/avatar-icon.webp', label: 'Profil Kurir' },
-                                    ].map(({ key, icon, label, badge }) => (
+                                    ].map(({ key, icon, emoji, label, badge }) => (
                                         <button key={key} onClick={() => setCourierMainTab(key)}
                                             className={`relative flex items-center gap-2 px-4 py-3 font-bold text-sm border-b-2 transition whitespace-nowrap flex-1 justify-center ${courierMainTab === key
                                                 ? 'text-[#004aad] border-[#004aad] bg-blue-50/50'
                                                 : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50'
                                                 }`}>
-                                            <img src={icon} className={`w-5 h-5 object-contain ${courierMainTab === key ? '' : 'grayscale opacity-50'}`} alt={label} />
+                                            {emoji ? (
+                                                <span className={`text-xl ${courierMainTab === key ? '' : 'grayscale opacity-50'}`}>{emoji}</span>
+                                            ) : (
+                                                <img src={icon} className={`w-5 h-5 object-contain ${courierMainTab === key ? '' : 'grayscale opacity-50'}`} alt={label} />
+                                            )}
                                             <span>{label}</span>
                                             {badge > 0 && (
                                                 <span className="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow border border-white animate-pulse">{badge}</span>
@@ -3411,14 +3750,19 @@ export default function App() {
                                         { key: 'tugas', icon: '/dekstop-icon.webp', label: 'Live Orderan', badge: courierActiveOrders.length },
                                         { key: 'riwayat', icon: '/clock-icon.webp', label: 'Riwayat Order' },
                                         { key: 'analitik', icon: '/chart-icon.webp', label: 'Laporan Analitik' },
+                                        { key: 'pelanggaran', emoji: '🚩', label: 'Pelanggaran', badge: courierReports.filter(r => r.status === 'forwarded').length },
                                         { key: 'profil', icon: '/avatar-icon.webp', label: 'Profil Kurir' },
-                                    ].map(({ key, icon, label, badge }) => (
+                                    ].map(({ key, icon, emoji, label, badge }) => (
                                         <button key={key} onClick={() => setCourierMainTab(key)}
                                             className={`relative flex items-center gap-3 mx-3 px-3 py-3 rounded-xl font-bold text-sm transition mb-1 ${courierMainTab === key
                                                 ? 'bg-blue-50/50 text-[#004aad] shadow-sm border border-blue-100'
                                                 : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 border border-transparent'
                                                 }`}>
-                                            <img src={icon} className={`w-5 h-5 object-contain ${courierMainTab === key ? '' : 'grayscale opacity-60'}`} alt={label} />
+                                            {emoji ? (
+                                                <span className={`text-xl ${courierMainTab === key ? '' : 'grayscale opacity-60'}`}>{emoji}</span>
+                                            ) : (
+                                                <img src={icon} className={`w-5 h-5 object-contain ${courierMainTab === key ? '' : 'grayscale opacity-60'}`} alt={label} />
+                                            )}
                                             <span>{label}</span>
                                             {badge > 0 && (
                                                 <span className="ml-auto bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow animate-pulse">{badge}</span>
@@ -3450,11 +3794,19 @@ export default function App() {
 
                                 {[{ key: 'riwayat', icon: '/clock-icon.webp', label: 'Riwayat' },
                                 { key: 'analitik', icon: '/chart-icon.webp', label: 'Analitik' },
-                                { key: 'profil', icon: '/avatar-icon.webp', label: 'Profil' }].map(({ key, icon, label }) => (
+                                { key: 'pelanggaran', emoji: '🚩', label: 'Pelanggaran' },
+                                { key: 'profil', icon: '/avatar-icon.webp', label: 'Profil' }].map(({ key, icon, emoji, label }) => (
                                     <button key={key} onClick={() => setCourierMainTab(key)}
-                                        className={`flex flex-col items-center justify-center gap-1 py-2 font-bold text-[10px] w-full flex-1 transition-all duration-300 ${courierMainTab === key ? 'text-[#004aad] -translate-y-1' : 'text-gray-400'
+                                        className={`relative flex flex-col items-center justify-center gap-1 py-2 font-bold text-[10px] w-full flex-1 transition-all duration-300 ${courierMainTab === key ? 'text-[#004aad] -translate-y-1' : 'text-gray-400'
                                             }`}>
-                                        <img src={icon} className={`w-6 h-6 object-contain transition-all duration-300 ${courierMainTab === key ? 'scale-110 drop-shadow-sm' : 'grayscale opacity-50 scale-100'}`} alt={label} />
+                                        {emoji ? (
+                                            <span className={`text-2xl ${courierMainTab === key ? 'scale-110 drop-shadow-sm' : 'grayscale opacity-50 scale-100'}`}>{emoji}</span>
+                                        ) : (
+                                            <img src={icon} className={`w-6 h-6 object-contain transition-all duration-300 ${courierMainTab === key ? 'scale-110 drop-shadow-sm' : 'grayscale opacity-50 scale-100'}`} alt={label} />
+                                        )}
+                                        {key === 'pelanggaran' && courierReports.filter(r => r.status === 'forwarded').length > 0 && (
+                                            <span className="absolute top-1 right-1/4 translate-x-2 bg-red-500 w-2 h-2 rounded-full shadow-lg animate-pulse border-2 border-white z-10 transition-all duration-300"></span>
+                                        )}
                                         <span className="leading-none whitespace-nowrap">{label}</span>
                                     </button>
                                 ))}
@@ -4040,6 +4392,115 @@ export default function App() {
 
                                         </div>{/* end p-4 content */}
                                     </div>
+                                )}                                {/* TAB PELANGGARAN */}
+                                {courierMainTab === 'pelanggaran' && (
+                                    <div className="pb-4">
+                                        <div className="sticky top-0 z-30 bg-[#eef3fb]/95 backdrop-blur-md border-b-2 border-[#004aad]/10 px-4 pt-4 pb-3 flex flex-col gap-2 mb-4 shadow-[0_2px_10px_rgba(0,74,173,0.08)]">
+                                            <h2 className="text-xl font-black text-[#004aad] tracking-tight">🚩 Pusat Pelanggaran</h2>
+                                            <p className="text-xs text-gray-500 font-medium">Laporan customer yang diteruskan admin ke kamu.</p>
+                                        </div>
+
+                                        <div className="px-4 space-y-4">
+                                            {/* Kartu Total Peringatan */}
+                                            <div className="bg-white rounded-2xl p-4 shadow-sm border-2 border-yellow-200 flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center text-2xl shrink-0">
+                                                    ⚠️
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-0.5">Total Peringatan</p>
+                                                    <p className="text-2xl font-black text-yellow-600 leading-none">
+                                                        {courierProfile?.warning_points || 0}
+                                                        <span className="text-sm font-bold text-gray-400 ml-1">Poin</span>
+                                                    </p>
+                                                </div>
+                                            </div>
+
+
+                                            {courierReports.length === 0 ? (
+                                                <div className="text-center p-10 bg-white rounded-2xl border border-gray-200 shadow-sm">
+                                                    <span className="text-5xl block mb-3 opacity-30">✅</span>
+                                                    <span className="font-bold text-gray-500 block">Bersih! Tidak ada laporan pelanggaran.</span>
+                                                </div>
+                                            ) : (
+                                                courierReports.map(report => {
+                                                    const displayStatus = report.orders?.is_deleted ? 'resolved' : report.status;
+                                                    return (
+                                                    <div key={report.id} className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-red-100 relative overflow-hidden">
+                                                        <div className="absolute top-0 left-0 w-1.5 h-full bg-red-500"></div>
+                                                        <div className="flex justify-between items-start mb-3">
+                                                            <div>
+                                                                <span className="bg-red-100 text-red-700 text-[9px] font-black px-2 py-1 rounded-md uppercase tracking-wider">
+                                                                    Teguran Admin
+                                                                </span>
+                                                                <p className="text-xs text-gray-400 font-bold mt-2">
+                                                                    Diteruskan: {report.forwarded_at ? new Date(report.forwarded_at).toLocaleString('id-ID') : new Date(report.created_at).toLocaleString('id-ID')}
+                                                                </p>
+                                                                {report.order_id && (
+                                                                    <p className="text-xs text-gray-500 mt-1 font-medium">
+                                                                        Terkait Order: {' '}
+                                                                        <button 
+                                                                            onClick={() => {
+                                                                                if (report.orders) {
+                                                                                    setAttachmentOrder({
+                                                                                        id: report.orders.id,
+                                                                                        text: report.orders.raw_order_text,
+                                                                                        status: report.orders.status,
+                                                                                        kendala_info: report.orders.kendala_info
+                                                                                    });
+                                                                                    setIsAttachmentModalOpen(true);
+                                                                                }
+                                                                            }}
+                                                                            className="font-bold text-[#004aad] hover:underline"
+                                                                        >
+                                                                            #INV-{report.order_id.toString().substring(0, 8).toUpperCase()}
+                                                                        </button>
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                            <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${displayStatus === 'resolved' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>
+                                                                {report.orders?.is_deleted ? '✅ Selesai (Dihapus)' : displayStatus === 'resolved' ? '✅ Selesai' : '⏳ Pending'}
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="bg-red-50 p-3 rounded-xl mb-4 border border-red-100">
+                                                            <p className="text-xs font-bold text-red-800 mb-1">Catatan dari Admin:</p>
+                                                            <p className="text-sm text-red-900 leading-relaxed italic">"{report.admin_notes || 'Ada laporan masuk terkait pelayanan kamu. Harap segera berikan klarifikasi.'}"</p>
+                                                        </div>
+
+                                                        <div className="border-t border-gray-100 pt-4">
+                                                            <p className="text-xs font-bold text-[#004aad] mb-2">Tanggapan / Klarifikasi Kamu:</p>
+                                                            {report.target_feedback ? (
+                                                                <div className="bg-[#eef3fb] p-3 rounded-xl border border-blue-100">
+                                                                    <p className="text-sm text-gray-800">{report.target_feedback}</p>
+                                                                    <p className="text-[10px] text-gray-500 mt-2 font-medium">Dikirim: {new Date(report.feedback_at).toLocaleString('id-ID')}</p>
+                                                                </div>
+                                                            ) : (
+                                                                <form onSubmit={(e) => {
+                                                                    e.preventDefault();
+                                                                    handleSubmitFeedback(report.id, e.target.feedback.value);
+                                                                }} className="flex flex-col gap-2">
+                                                                    <textarea 
+                                                                        name="feedback" 
+                                                                        rows="3" 
+                                                                        placeholder="Tuliskan klarifikasi atau permintaan maaf kamu di sini..."
+                                                                        className="w-full text-sm p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#004aad] focus:border-[#004aad] outline-none resize-none"
+                                                                        required
+                                                                    ></textarea>
+                                                                    <button 
+                                                                        type="submit"
+                                                                        className="bg-[#004aad] text-white font-bold py-3 rounded-xl text-sm transition hover:bg-blue-800 active:scale-95 shadow-md flex items-center justify-center gap-2"
+                                                                    >
+                                                                        <span>Kirim Tanggapan</span>
+                                                                        <span>🚀</span>
+                                                                    </button>
+                                                                </form>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )})
+                                            )}
+                                        </div>
+                                    </div>
                                 )}
 
                                 {/* TAB PROFIL */}
@@ -4275,6 +4736,13 @@ export default function App() {
             </div>
 
             {/* MODAL EDIT PESANAN */}
+
+            {/* MODAL LAMPIRAN LAPORAN */}
+            <ReportAttachmentModal
+                isOpen={isAttachmentModalOpen}
+                onClose={() => setIsAttachmentModalOpen(false)}
+                order={attachmentOrder}
+            />
 
             {/* MODAL EDIT ORDER */}
             <EditOrderModal
