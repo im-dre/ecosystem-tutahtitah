@@ -3693,10 +3693,15 @@ export default function App() {
                                         </div>
                                     </div>
                                     
+                                    <div className="bg-red-50 p-3 rounded-xl border border-red-100">
+                                        <p className="text-[10px] text-red-500 font-bold mb-1 uppercase">Pesan dari Pelanggan:</p>
+                                        <p className="text-sm text-red-900 font-medium">"{report.reason}"</p>
+                                    </div>
+                                    
                                     {report.admin_notes && (
-                                        <div className="bg-red-50 p-3 rounded-xl border border-red-100">
-                                            <p className="text-[10px] text-red-500 font-bold mb-1 uppercase">Peringatan/Catatan Admin:</p>
-                                            <p className="text-sm text-red-900 font-medium">"{report.admin_notes}"</p>
+                                        <div className="bg-orange-50 p-3 rounded-xl border border-orange-100">
+                                            <p className="text-[10px] text-orange-600 font-bold mb-1 uppercase">Catatan Tambahan Admin:</p>
+                                            <p className="text-sm text-orange-900 font-medium">"{report.admin_notes}"</p>
                                         </div>
                                     )}
 

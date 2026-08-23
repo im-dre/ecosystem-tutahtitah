@@ -55,6 +55,9 @@ export default function App() {
     const [loading, setLoading] = useState(false);
 
     const [allOrders, setAllOrders] = useState([]);
+    const [adminHistoricalOrders, setAdminHistoricalOrders] = useState([]);
+    const [courierHistoricalOrders, setCourierHistoricalOrders] = useState([]);
+    const [isFetchingHistory, setIsFetchingHistory] = useState(false);
     const [couriersList, setCouriersList] = useState([]);
     const [customersList, setCustomersList] = useState([]);
     const [courierRatingStats, setCourierRatingStats] = useState({});
@@ -70,6 +73,8 @@ export default function App() {
 
     const [adminMainTab, setAdminMainTab] = useState('operasional');
     const [adminOperasionalTab, setAdminOperasionalTab] = useState('pending');
+    const [adminOperasionalSubTab, setAdminOperasionalSubTab] = useState('Semua');
+    const [courierTugasSubTab, setCourierTugasSubTab] = useState('Semua');
     const [adminFilterPeriod, setAdminFilterPeriod] = useState('month');
     const [adminFilterStartDate, setAdminFilterStartDate] = useState('');
     const [adminFilterEndDate, setAdminFilterEndDate] = useState('');
@@ -1202,10 +1207,9 @@ export default function App() {
             const oneMonthAgo = new Date();
             oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
             const { data: activeOrders } = await supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers").in("status", ["pending", "processing", "hold", "waiting_customer", "searching_courier", "courier_found", "on_delivery", "picking_up", "item_ready", "delivering"]).eq("is_deleted", false).order("created_at", { ascending: false });
-            const { data: historyOrders } = await supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers").in("status", ["completed", "cancelled", "unreachable"]).order("created_at", { ascending: false }).limit(30);
-            const ordersData = [...(activeOrders || []), ...(historyOrders || [])];
+            const ordersData = [...(activeOrders || [])];
             const { data: couriersData } = await supabase.from("employees").select("id, full_name, pin, role, warning_points, bank_name, account_number, bank_name_2, account_number_2, is_super_admin, is_online").eq("role", "courier");
-            const { data: allEmpData } = await supabase.from("employees").select("id, full_name, role, email, phone, pin, bank_name, account_number, bank_name_2, account_number_2, warning_points, is_online").order("role", { ascending: true });
+            const { data: allEmpData } = await supabase.from("employees").select("id, full_name, role, email, phone, pin, bank_name, account_number, bank_name_2, account_number_2, warning_points, is_online, auth_id").order("role", { ascending: true });
             const { data: customersData } = await supabase.from("customers").select("id, name, phone, address, auth_id, created_at").order("created_at", { ascending: false }).limit(3000);
             const { data: rawRatingsData } = await supabase.from("ratings").select("id, order_id, target_id, target_type, rating, review").eq("target_type", "courier").order("created_at", { ascending: false }).limit(100);
             
@@ -1261,6 +1265,92 @@ export default function App() {
         } catch (err) { console.error(err); } finally { setLoading(false); }
     };
 
+
+    // ==========================================
+    // LAZY LOAD HISTORY LOGIC
+    // ==========================================
+    const getPeriodDateRange = (period, customStart, customEnd) => {
+        const now = new Date();
+        if (period === 'today') {
+            const start = new Date(now.setHours(0,0,0,0)).toISOString();
+            const end = new Date(now.setHours(23,59,59,999)).toISOString();
+            return { start, end };
+        }
+        if (period === 'week') {
+            const start = new Date(now);
+            start.setDate(start.getDate() - 7);
+            start.setHours(0,0,0,0);
+            return { start: start.toISOString(), end: null };
+        }
+        if (period === 'month') {
+            const start = new Date(now.getFullYear(), now.getMonth(), 1, 0,0,0,0).toISOString();
+            const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23,59,59,999).toISOString();
+            return { start, end };
+        }
+        if (period === 'year') {
+            const start = new Date(now.getFullYear(), 0, 1, 0,0,0,0).toISOString();
+            const end = new Date(now.getFullYear(), 11, 31, 23,59,59,999).toISOString();
+            return { start, end };
+        }
+        if (period === 'custom' && customStart && customEnd) {
+            const start = new Date(customStart);
+            start.setHours(0,0,0,0);
+            const end = new Date(customEnd);
+            end.setHours(23,59,59,999);
+            return { start: start.toISOString(), end: end.toISOString() };
+        }
+        if (period === 'all') {
+            return { start: null, end: null };
+        }
+        return { start: null, end: null };
+    };
+
+    const fetchHistoricalData = async (role, period, customStart, customEnd) => {
+        if (period === 'custom' && (!customStart || !customEnd)) return;
+        setIsFetchingHistory(true);
+        try {
+            const { start, end } = getPeriodDateRange(period, customStart, customEnd);
+            let query = supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers").in("status", ["completed", "cancelled", "unreachable"]).eq("is_deleted", false).order("created_at", { ascending: false });
+            
+            if (start) query = query.gte("created_at", start);
+            if (end) query = query.lte("created_at", end);
+            
+            // Protect against infinite queries
+            query = query.limit(3000); 
+
+            const { data, error } = await query;
+            if (error) throw error;
+
+            if (role === 'admin') {
+                setAdminHistoricalOrders(data || []);
+            } else {
+                setCourierHistoricalOrders(data || []);
+            }
+        } catch (err) {
+            console.error("Error lazy loading history:", err);
+            toast.error("Gagal menarik data riwayat.");
+        } finally {
+            setIsFetchingHistory(false);
+        }
+    };
+
+    // Admin Lazy Load
+    useEffect(() => {
+        if (!user || user.role !== 'admin' && user.role !== 'superadmin') return;
+        if (adminMainTab === 'riwayat' || adminMainTab === 'analitik') {
+            fetchHistoricalData('admin', adminFilterPeriod, adminFilterStartDate, adminFilterEndDate);
+        }
+    }, [adminMainTab, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, user]);
+
+    // Courier Lazy Load
+    useEffect(() => {
+        if (!user || user.role !== 'courier') return;
+        if (courierMainTab === 'riwayat' || courierMainTab === 'analitik') {
+            fetchHistoricalData('courier', courierFilterPeriod, courierFilterStartDate, courierFilterEndDate);
+        }
+    }, [courierMainTab, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, user]);
+    // ==========================================
+
     const updateGlobalSettings = async (field, newVal) => {
         const val = parseInt(newVal) || 0;
         if (field === 'admin') setAdminProfitShare(val); else setKasShare(val);
@@ -1307,11 +1397,24 @@ export default function App() {
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (p) => {
                 if (p.new.is_deleted === true) {
                     setAllOrders(prev => prev.filter(o => o.id !== p.new.id));
+                    setAdminHistoricalOrders(prev => prev.filter(o => o.id !== p.new.id));
+                    setCourierHistoricalOrders(prev => prev.filter(o => o.id !== p.new.id));
                     return;
                 }
                 setAllOrders(prev => prev.map(o => o.id === p.new.id ? p.new : o));
                 const oldStatus = p.old?.status;
                 const newStatus = p.new?.status;
+
+                // --- REALTIME UPDATE UNTUK RIWAYAT / ANALITIK ---
+                if (['completed', 'cancelled', 'unreachable'].includes(newStatus)) {
+                    const updateHist = (prev) => {
+                        if (!prev.find(o => o.id === p.new.id)) return [p.new, ...prev].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+                        return prev.map(o => o.id === p.new.id ? p.new : o);
+                    };
+                    if (user.role === 'admin' || user.role === 'superadmin') setAdminHistoricalOrders(updateHist);
+                    else if (user.role === 'courier') setCourierHistoricalOrders(updateHist);
+                }
+
 
                 // --- ALARM UNTUK KURIR ---
                 if (user.role === 'courier' && p.new.assigned_courier_id === user.id) {
@@ -1379,7 +1482,7 @@ export default function App() {
     const adminPendingOrders = allOrders.filter(o => o.status === 'pending');
     const adminProcessingOrders = allOrders.filter(o => o.status === 'processing' || o.status === 'hold' || o.status === 'waiting_customer' || o.status === 'delivering');
     const courierActiveOrders = allOrders.filter(o => (o.status === 'processing' || o.status === 'hold' || o.status === 'delivering') && o.assigned_courier_id === user?.id);
-    const courierHistoryOrders = allOrders.filter(o => {
+    const courierHistoryOrders = courierHistoricalOrders.filter(o => {
         return ((o.status === 'completed' || o.status === 'cancelled') && o.assigned_courier_id === user?.id) || (o.failed_couriers && Array.isArray(o.failed_couriers) && o.failed_couriers.some(fc => fc.id === user?.id));
     });
 
@@ -1392,7 +1495,7 @@ export default function App() {
 
     const adminAnalytics = useMemo(() => {
         try {
-            const periodOrders = allOrders.filter(o => isWithinPeriod(o.created_at, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate));
+            const periodOrders = adminHistoricalOrders.filter(o => isWithinPeriod(o.created_at, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate));
             const analitikSelesai = periodOrders.filter(o => o.status === 'completed');
 
             const totalOngkirPeriode = analitikSelesai.reduce((sum, o) => sum + (parseFloat(o.delivery_fee) || 0), 0);
@@ -1493,7 +1596,7 @@ export default function App() {
         } catch (e) {
             return { periodOrders: [], analitikSelesai: [], totalOngkirPeriode: 0, hakAdminPure: 0, totalKasTermasukDenda: 0, totalHakKurirGlobal: 0, serviceData: [], trendDataTime: [], trendDataHour: [], courierPerformance: [], totalOrdersPeriod: 0, suksesOrders: 0, batalOrders: 0, gagalOrders: 0, persenSukses: 0, persenBatal: 0, persenGagal: 0, avgDurationAll: '-', avgDurationBelanja: '-', avgDurationOjek: '-', avgDurationKirim: '-', targetOrders: 0 };
         }
-    }, [allOrders, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, adminChartGrouping, adminProfitShare, kasShare, couriersList]);
+    }, [adminHistoricalOrders, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, adminChartGrouping, adminProfitShare, kasShare, couriersList]);
 
     const courierAnalytics = useMemo(() => {
         try {
@@ -1594,7 +1697,7 @@ export default function App() {
                 pendapatan: totalPendapatan, bersih: bersihPendapatan, potongan: (totalPendapatan * (potonganPersen / 100)), denda, talangan: totalTalanganKeluar, history: flattenedHistory, potonganPersen
             };
         } catch (e) { return { total: 0, sukses: 0, belanjaSks: 0, ojekSks: 0, kirimSks: 0, batal: 0, gagal: 0, persenSukses: 0, persenBatal: 0, persenGagal: 0, pendapatan: 0, bersih: 0, potongan: 0, denda: 0, talangan: 0, history: [], potonganPersen: 0 }; }
-    }, [courierHistoryOrders, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, courierChartPeriod, adminProfitShare, kasShare, user?.id]);
+    }, [courierHistoryOrders, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, courierFilterService, courierChartPeriod, adminProfitShare, kasShare, user?.id]);
 
     const handleDispatch = async (orderId) => {
         const courierId = dispatchInputs[`${orderId}_courier`];
@@ -1701,6 +1804,8 @@ export default function App() {
                 const { error } = await supabase.from('orders').update({ is_deleted: true, kendala_info: `Dihapus Permanen: ${text}` }).eq('id', orderId);
                 if (error) throw error;
                 setAllOrders(prev => prev.filter(o => o.id !== orderId));
+                setAdminHistoricalOrders(prev => prev.filter(o => o.id !== orderId));
+                setCourierHistoricalOrders(prev => prev.filter(o => o.id !== orderId));
                 showNotif("Orderan berhasil dihapus permanen!", "success");
             } catch (err) {
                 console.error(err);
@@ -2119,7 +2224,21 @@ export default function App() {
                 {/* PANGGUNG TOASTER UNTUK HALAMAN LOGIN */}
                 <Toaster position="top-center" toastOptions={{ duration: 3000, style: { background: '#333', color: '#fff', borderRadius: '10px' } }} />
 
-                {notif.message && (<div className={`fixed top-4 right-4 z-50 px-6 py-3 rounded-xl font-bold text-white shadow-xl ${notif.type === "error" ? "bg-red-500" : "bg-emerald-500"}`}>{notif.message}</div>)}
+                {notif.message && (
+                    <div className={`fixed top-8 left-1/2 z-[100] w-[90%] max-w-sm px-4 py-3 rounded-2xl shadow-xl border backdrop-blur-xl bg-white/95 toast-animate flex items-center gap-3 ${notif.type === "error" ? "border-red-500" : "border-emerald-500"}`}>
+                        <div className={`flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full ${notif.type === "error" ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-600"}`}>
+                            <span className="text-xl">{notif.type === "error" ? "⚠️" : "✅"}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className={`text-[10px] uppercase font-bold tracking-widest ${notif.type === "error" ? "text-red-600" : "text-emerald-600"}`}>
+                                {notif.type === "error" ? "Pemberitahuan" : "Berhasil"}
+                            </span>
+                            <span className="text-sm font-semibold text-gray-800 leading-snug">
+                                {notif.message}
+                            </span>
+                        </div>
+                    </div>
+                )}
 
                 {needsInitialSetup && !isSetupMode && (
                     <div className="absolute top-4 w-full flex justify-center z-40">
@@ -2210,7 +2329,21 @@ export default function App() {
                 }}
             />
             <style>{`@media print { body * { visibility: hidden; } #analytics-export-area, #analytics-export-area * { visibility: visible; } #analytics-export-area { position: absolute; left: 0; top: 0; width: 100%; padding: 20px; background: white; } .no-print { display: none !important; } .print-break { page-break-inside: avoid; } }`}</style>
-            {notif.message && (<div className={`no-print fixed top-4 right-4 z-50 px-6 py-3 rounded-xl font-bold text-white shadow-xl transition-all ${notif.type === "error" ? "bg-red-500" : "bg-emerald-500"}`}>{notif.message}</div>)}
+            {notif.message && (
+                <div className={`no-print fixed top-8 left-1/2 z-[100] w-[90%] max-w-sm px-4 py-3 rounded-2xl shadow-xl border backdrop-blur-xl bg-white/95 toast-animate flex items-center gap-3 ${notif.type === "error" ? "border-red-500" : "border-emerald-500"}`}>
+                    <div className={`flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full ${notif.type === "error" ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-600"}`}>
+                        <span className="text-xl">{notif.type === "error" ? "⚠️" : "✅"}</span>
+                    </div>
+                    <div className="flex flex-col">
+                        <span className={`text-[10px] uppercase font-bold tracking-widest ${notif.type === "error" ? "text-red-600" : "text-emerald-600"}`}>
+                            {notif.type === "error" ? "Pemberitahuan" : "Berhasil"}
+                        </span>
+                        <span className="text-sm font-semibold text-gray-800 leading-snug">
+                            {notif.message}
+                        </span>
+                    </div>
+                </div>
+            )}
 
             {/* TOP NAVIGATION */}
             {user?.role === 'courier' ? (
@@ -2964,56 +3097,49 @@ export default function App() {
                             {/* TAB OPERASIONAL ADMIN */}
                             {adminMainTab === 'operasional' && (
                                 <div className="space-y-6">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="bg-white border border-gray-200 p-4 rounded-2xl shadow-sm">
-                                            <h3 className="font-bold text-gray-800 text-sm mb-2">📋 Copy Format Order (Kirim ke WA)</h3>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => copyFormat('ojek')} className="flex-1 bg-yellow-50 text-yellow-700 font-bold text-[10px] sm:text-xs py-2 rounded-lg border border-yellow-200 hover:bg-yellow-100">🛵 Ojek</button>
-                                                <button onClick={() => copyFormat('kirim')} className="flex-1 bg-emerald-50 text-emerald-700 font-bold text-[10px] sm:text-xs py-2 rounded-lg border border-emerald-200 hover:bg-emerald-100">📦 Kurir</button>
-                                                <button onClick={() => copyFormat('jastip')} className="flex-1 bg-blue-50 text-[#004aad] font-bold text-[10px] sm:text-xs py-2 rounded-lg border border-blue-200 hover:bg-blue-100">🛒 Jastip</button>
-                                            </div>
+                                    {/* QUICK ACTIONS & TOGGLES HEADER */}
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-gray-200 shadow-sm">
+                                        {/* Copy Formats */}
+                                        <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-1 shrink-0">Copy Format:</span>
+                                            <button onClick={() => copyFormat('ojek')} className="shrink-0 bg-yellow-50 text-yellow-700 font-bold text-[10px] px-3 py-1.5 rounded-full border border-yellow-200 hover:bg-yellow-100 transition">🛵 Ojek</button>
+                                            <button onClick={() => copyFormat('kirim')} className="shrink-0 bg-emerald-50 text-emerald-700 font-bold text-[10px] px-3 py-1.5 rounded-full border border-emerald-200 hover:bg-emerald-100 transition">📦 Kurir</button>
+                                            <button onClick={() => copyFormat('jastip')} className="shrink-0 bg-blue-50 text-[#004aad] font-bold text-[10px] px-3 py-1.5 rounded-full border border-blue-200 hover:bg-blue-100 transition">🛒 Jastip</button>
                                         </div>
-                                        <div className="bg-white border border-gray-200 p-4 rounded-2xl shadow-sm flex justify-between items-center">
-                                            <div>
-                                                <h3 className="font-bold text-gray-800 text-sm mb-1">Pusat Input Manual</h3>
-                                                <p className="text-[10px] text-gray-500">Mendukung Database Pelanggan & Lampiran Foto</p>
+
+                                        {/* Layanan Custom Order Toggle */}
+                                        <div className="flex items-center gap-3 shrink-0 pl-1 sm:pl-3 sm:border-l border-gray-100">
+                                            <div className="flex flex-col">
+                                                <span className="text-[10px] font-bold text-gray-800">Custom Order</span>
+                                                <span className={`text-[9px] font-medium ${isCustomOrderOpen ? 'text-green-600' : 'text-red-500'}`}>{isCustomOrderOpen ? 'Buka' : 'Tutup'}</span>
                                             </div>
-                                            <button onClick={() => setIsManualModalOpen(true)} className="bg-[#004aad] hover:bg-[#003b8a] text-white px-5 py-2.5 rounded-xl font-bold shadow-md transition text-xs">+ Input Order Manual</button>
+                                            <button
+                                                onClick={handleToggleCustomOrder}
+                                                disabled={isTogglingCustomOrder || !customOrderMerchantId}
+                                                className={`relative shrink-0 w-11 h-6 rounded-full transition-all duration-300 shadow-inner focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${isCustomOrderOpen ? 'bg-green-500' : 'bg-gray-300'}`}
+                                            >
+                                                <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-all duration-300 ${isCustomOrderOpen ? 'left-[22px]' : 'left-0.5'}`}></div>
+                                            </button>
                                         </div>
                                     </div>
 
-                                    {/* CARD TOGGLE BUKA/TUTUP CUSTOM ORDER */}
-                                    <div className={`p-4 rounded-2xl border-2 shadow-sm flex items-center justify-between gap-4 transition-all ${isCustomOrderOpen ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-2xl shadow-sm ${isCustomOrderOpen ? 'bg-green-100' : 'bg-red-100'}`}>
-                                                {isCustomOrderOpen ? '🟢' : '🔴'}
-                                            </div>
-                                            <div>
-                                                <h3 className={`font-bold text-sm ${isCustomOrderOpen ? 'text-green-800' : 'text-red-800'}`}>
-                                                    Layanan Custom Order (Belanja Pasar/Warung)
-                                                </h3>
-                                                <p className={`text-[10px] font-medium ${isCustomOrderOpen ? 'text-green-600' : 'text-red-600'}`}>
-                                                    {isCustomOrderOpen
-                                                        ? '✅ Sedang BUKA — Customer bisa memesan sekarang'
-                                                        : '🔒 Sedang TUTUP — Customer tidak bisa memesan'}
-                                                </p>
-                                            </div>
-                                        </div>
-                                        <button
-                                            onClick={handleToggleCustomOrder}
-                                            disabled={isTogglingCustomOrder || !customOrderMerchantId}
-                                            className={`relative shrink-0 w-14 h-7 rounded-full transition-all duration-300 shadow-inner focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${isCustomOrderOpen ? 'bg-green-500' : 'bg-gray-300'}`}
-                                        >
-                                            <div className={`absolute top-0.5 w-6 h-6 bg-white rounded-full shadow-md transition-all duration-300 ${isCustomOrderOpen ? 'left-7' : 'left-0.5'}`}></div>
+                                    {/* SEGMENTED CONTROL: PENDING vs PROCESSING */}
+                                    <div className="flex p-1 bg-gray-100 rounded-xl w-full sm:w-[350px] border border-gray-200/60 shadow-inner">
+                                        <button onClick={() => setAdminOperasionalTab('pending')} className={`flex-1 flex justify-center items-center gap-1.5 px-2 py-2 rounded-lg font-bold text-xs sm:text-sm transition-all duration-300 ${adminOperasionalTab === 'pending' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'}`}>
+                                            <span className="relative">
+                                                Masuk
+                                                {adminPendingOrders.length > 0 && (
+                                                    <span className="absolute -top-1 -right-2 flex h-2 w-2">
+                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
+                                                    </span>
+                                                )}
+                                            </span>
+                                            <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-md text-[10px] ml-1">{adminPendingOrders.length}</span>
                                         </button>
-                                    </div>
-
-                                    <div className="flex gap-2 p-1 bg-gray-200 rounded-xl w-full sm:w-max">
-                                        <button onClick={() => setAdminOperasionalTab('pending')} className={`flex-1 sm:flex-none px-6 py-2.5 rounded-lg font-bold text-sm transition ${adminOperasionalTab === 'pending' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
-                                            📥 Order Masuk ({adminPendingOrders.length})
-                                        </button>
-                                        <button onClick={() => setAdminOperasionalTab('processing')} className={`flex-1 sm:flex-none px-6 py-2.5 rounded-lg font-bold text-sm transition ${adminOperasionalTab === 'processing' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
-                                            🚀 Sedang Jalan ({adminProcessingOrders.length})
+                                        <button onClick={() => setAdminOperasionalTab('processing')} className={`flex-1 flex justify-center items-center gap-1.5 px-2 py-2 rounded-lg font-bold text-xs sm:text-sm transition-all duration-300 ${adminOperasionalTab === 'processing' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'}`}>
+                                            Sedang Jalan
+                                            <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-md text-[10px] ml-1">{adminProcessingOrders.length}</span>
                                         </button>
                                     </div>
 
@@ -3069,19 +3195,41 @@ export default function App() {
 
                                     {/* SUB-TAB SEDANG JALAN (PROCESSING / HOLD / WAITING / DELIVERING) */}
                                     {adminOperasionalTab === 'processing' && (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            {adminProcessingOrders.map(o => {
-                                                const isHold = o.status === 'hold';
-                                                const isWaiting = o.status === 'waiting_customer';
-                                                const isDelivering = o.status === 'delivering';
+                                        <div className="flex flex-col gap-4">
+                                            {/* Sub-Tabs Nav Admin */}
+                                            <div className="flex overflow-x-auto hide-scrollbar gap-5 px-4 md:px-0 border-b border-gray-200">
+                                                {['Semua', 'Diproses', 'Menuju Lokasi', 'Kendala', 'Nyerah'].map(sub => (
+                                                    <button key={sub} onClick={() => setAdminOperasionalSubTab(sub)}
+                                                        className={`whitespace-nowrap pb-2.5 text-[11px] uppercase tracking-wide font-bold transition-all border-b-[3px] ${adminOperasionalSubTab === sub ? 'text-[#004aad] border-[#004aad]' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
+                                                        {sub}
+                                                    </button>
+                                                ))}
+                                            </div>
 
-                                                return (
-                                                    <div key={o.id} className={`p-5 rounded-2xl border shadow-sm flex flex-col h-full relative overflow-hidden ${isHold ? 'bg-orange-50 border-orange-300' : isWaiting ? 'bg-red-50 border-red-300' : isDelivering ? 'bg-blue-50 border-blue-300' : 'bg-white border-gray-200'}`}>
-                                                        <div className={`absolute top-0 left-0 w-1.5 h-full ${isHold ? 'bg-orange-400' : isWaiting ? 'bg-red-500 animate-pulse' : isDelivering ? 'bg-blue-400' : 'bg-orange-400'}`}></div>
-                                                        <div className="flex justify-between items-start mb-2 pl-2">
-                                                            <ServiceBadge type={o.tipe_layanan} />
-                                                            <span className="text-[10px] font-bold text-gray-400">{formatDateTime(o.created_at)}</span>
-                                                        </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 md:gap-4 -mx-4 md:mx-0">
+                                                {adminProcessingOrders.filter(o => {
+                                                    const isHold = o.status === 'hold';
+                                                    const isWaiting = o.status === 'waiting_customer' || (o.failed_couriers && o.failed_couriers.length > 0 && o.status === 'processing');
+                                                    const isDelivering = o.status === 'delivering';
+
+                                                    if (adminOperasionalSubTab === 'Semua') return true;
+                                                    if (adminOperasionalSubTab === 'Diproses') return o.status === 'processing' && !isWaiting;
+                                                    if (adminOperasionalSubTab === 'Menuju Lokasi') return isDelivering;
+                                                    if (adminOperasionalSubTab === 'Kendala') return isHold;
+                                                    if (adminOperasionalSubTab === 'Nyerah') return isWaiting;
+                                                    return true;
+                                                }).map(o => {
+                                                    const isHold = o.status === 'hold';
+                                                    const isWaiting = o.status === 'waiting_customer' || (o.failed_couriers && o.failed_couriers.length > 0 && o.status === 'processing');
+                                                    const isDelivering = o.status === 'delivering';
+
+                                                    return (
+                                                        <div key={o.id} className={`p-4 md:p-5 border-y md:border-x border-gray-200 md:rounded-2xl flex flex-col h-full relative overflow-hidden ${isHold ? 'bg-orange-50 border-orange-200' : isWaiting ? 'bg-red-50 border-red-200' : isDelivering ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
+                                                            <div className={`absolute top-0 left-0 w-1.5 h-full ${isHold ? 'bg-orange-400' : isWaiting ? 'bg-red-500 animate-pulse' : isDelivering ? 'bg-blue-400' : 'bg-emerald-400'}`}></div>
+                                                            <div className="flex justify-between items-start mb-2 pl-2">
+                                                                <ServiceBadge type={o.tipe_layanan} />
+                                                                <span className="text-[10px] font-bold text-gray-400">{formatDateTime(o.created_at)}</span>
+                                                            </div>
                                                         <div className="pl-2">
                                                             <div className="flex justify-between items-center mb-1">
                                                                 <p className="font-bold text-gray-900 text-sm truncate">{o.customer_name || o.customer_wa.split('-')[0]}</p>
@@ -3227,10 +3375,18 @@ export default function App() {
                                             })}
                                             {adminProcessingOrders.length === 0 && <div className="col-span-full p-10 text-center bg-white rounded-2xl border border-gray-200 shadow-sm font-bold text-gray-500">Tidak ada order yang sedang di jalan.</div>}
                                         </div>
+                                    </div>
                                     )}
+
+                                    {/* FAB INPUT MANUAL */}
+                                    <button 
+                                        onClick={() => setIsManualModalOpen(true)}
+                                        className="fixed bottom-24 right-4 md:right-8 z-40 bg-[#004aad] hover:bg-[#003b8a] text-white w-14 h-14 rounded-full shadow-[0_4px_15px_rgba(0,74,173,0.4)] flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
+                                    >
+                                        <span className="text-3xl font-light mb-1">+</span>
+                                    </button>
                                 </div>
                             )}
-
                             {/* TAB RIWAYAT ADMIN */}
                             {adminMainTab === 'riwayat' && (
                                 <div className="space-y-4">
@@ -3277,6 +3433,12 @@ export default function App() {
                                             .filter(o => (o.customer_name || o.customer_wa || '').toLowerCase().includes(adminHistorySearch.toLowerCase()));
 
                                         return (<>
+                                            {isFetchingHistory ? (
+                                                <div className="flex flex-col items-center justify-center py-12 text-gray-500">
+                                                    <div className="w-10 h-10 border-4 border-gray-200 border-t-[#004aad] rounded-full animate-spin mb-4"></div>
+                                                    <p className="font-bold text-sm">Memuat Data Riwayat...</p>
+                                                </div>
+                                            ) : (
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                                 {filteredOrders.slice(0, adminHistoryLimit).map(o => {
                                                     const isFailed = o.failed_couriers && o.failed_couriers.length > 0;
@@ -3369,7 +3531,8 @@ export default function App() {
                                                     )
                                                 })}
                                             </div>
-                                            {filteredOrders.length > adminHistoryLimit ? (
+                                            )}
+                                            {filteredOrders.length > adminHistoryLimit && !isFetchingHistory ? (
                                                 <div className="flex flex-col items-center mt-6 gap-3">
                                                     <button onClick={() => setAdminHistoryLimit(prev => prev + 20)} className="bg-white text-[#004aad] px-6 py-2.5 rounded-xl font-bold shadow-sm border border-[#004aad] hover:bg-blue-50 transition w-full max-w-sm">
                                                         Tampilkan Lebih Banyak ({filteredOrders.length - adminHistoryLimit} tersisa)
@@ -3731,7 +3894,7 @@ export default function App() {
                             {/* ── BOTTOM NAV: mobile only ── */}
                             <div className="no-print md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 flex justify-around items-end shadow-[0_-8px_24px_rgba(0,0,0,0.08)] pb-safe-area-inset-bottom">
                                 {/* LIVE ORDERAN - FAB Protruding */}
-                                <button onClick={() => setCourierMainTab('tugas')} className="relative flex flex-col items-center justify-end w-full flex-1 h-14 pb-2 transition group">
+                                <button onClick={() => setCourierMainTab('tugas')} className="relative flex flex-col items-center justify-end w-full flex-1 h-14 pb-2 transition group active:scale-95">
                                     <div className={`absolute -top-4 w-14 h-14 rounded-full flex items-center justify-center border-4 transition-all duration-300 shadow-lg ${courierMainTab === 'tugas'
                                         ? 'bg-white border-transparent scale-110 -translate-y-2 shadow-[0_4px_18px_rgba(0,74,173,0.35)]'
                                         : 'bg-white border-gray-200 scale-100'
@@ -3753,7 +3916,7 @@ export default function App() {
                                 { key: 'pelanggaran', emoji: '🚩', label: 'Pelanggaran' },
                                 { key: 'profil', icon: '/avatar-icon.webp', label: 'Profil' }].map(({ key, icon, emoji, label }) => (
                                     <button key={key} onClick={() => setCourierMainTab(key)}
-                                        className={`relative flex flex-col items-center justify-center gap-1 py-2 font-bold text-[10px] w-full flex-1 transition-all duration-300 ${courierMainTab === key ? 'text-[#004aad] -translate-y-1' : 'text-gray-400'
+                                        className={`relative flex flex-col items-center justify-center gap-1 py-2 font-bold text-[10px] w-full flex-1 transition-all duration-300 active:scale-95 ${courierMainTab === key ? 'text-[#004aad] -translate-y-1' : 'text-gray-400'
                                             }`}>
                                         {emoji ? (
                                             <span className={`text-2xl ${courierMainTab === key ? 'scale-110 drop-shadow-sm' : 'grayscale opacity-50 scale-100'}`}>{emoji}</span>
@@ -3773,23 +3936,45 @@ export default function App() {
 
                                 {/* TAB TUGAS */}
                                 {courierMainTab === 'tugas' && (
-                                    <div className="p-4 space-y-4">
+                                    <div className="space-y-4 pt-4 md:px-0">
+                                        {/* Sub-Tabs Nav Courier */}
+                                        <div className="flex overflow-x-auto hide-scrollbar gap-5 px-4 md:px-0 border-b border-gray-200 mb-2">
+                                            {['Semua', 'Diproses', 'Menuju Lokasi', 'Kendala'].map(sub => (
+                                                <button key={sub} onClick={() => setCourierTugasSubTab(sub)}
+                                                    className={`whitespace-nowrap pb-2.5 text-[11px] uppercase tracking-wide font-bold transition-all border-b-[3px] ${courierTugasSubTab === sub ? 'text-[#004aad] border-[#004aad]' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
+                                                    {sub}
+                                                </button>
+                                            ))}
+                                        </div>
+
                                         {courierActiveOrders.length === 0 && !loading && (
-                                            <div className="text-center p-10 bg-white rounded-2xl border border-gray-200 shadow-sm mt-4">
+                                            <div className="text-center p-10 bg-white md:rounded-2xl border-y md:border border-gray-200 shadow-sm mt-4">
                                                 <img src="/dekstop-icon.webp" className="w-16 h-16 mx-auto mb-3 opacity-30 grayscale" alt="Kosong" />
                                                 <span className="font-bold text-gray-500 block">Belum ada tugas baru.</span>
                                             </div>
                                         )}
-                                        {courierActiveOrders.map(task => {
-                                            const isHold = task.status === 'hold';
-                                            const isWaiting = task.failed_couriers && task.failed_couriers.some(fc => fc.id === user.id) && task.status === 'processing';
-                                            const jastipItemsObj = task.tipe_layanan === 'Belanja' ? parseJastipItemsObjects(task.raw_order_text) : [];
-                                            const jastipNote = task.tipe_layanan === 'Belanja' ? parseJastipNote(task.raw_order_text) : '';
-                                            const ojekData = task.tipe_layanan === 'Antar Jemput' ? parseOjekDetails(task.raw_order_text) : null;
-                                            const kirimData = task.tipe_layanan === 'Kirim Barang' ? parseKirimDetails(task.raw_order_text) : null;
+                                        
+                                        <div className="flex flex-col gap-0 md:gap-4">
+                                            {courierActiveOrders.filter(o => {
+                                                const isHold = o.status === 'hold';
+                                                const isDelivering = o.status === 'delivering';
+                                                const isProcessing = o.status === 'processing';
+                                                
+                                                if (courierTugasSubTab === 'Semua') return true;
+                                                if (courierTugasSubTab === 'Diproses') return isProcessing;
+                                                if (courierTugasSubTab === 'Menuju Lokasi') return isDelivering;
+                                                if (courierTugasSubTab === 'Kendala') return isHold;
+                                                return true;
+                                            }).map(task => {
+                                                const isHold = task.status === 'hold';
+                                                const isWaiting = task.failed_couriers && task.failed_couriers.some(fc => fc.id === user.id) && task.status === 'processing';
+                                                const jastipItemsObj = task.tipe_layanan === 'Belanja' ? parseJastipItemsObjects(task.raw_order_text) : [];
+                                                const jastipNote = task.tipe_layanan === 'Belanja' ? parseJastipNote(task.raw_order_text) : '';
+                                                const ojekData = task.tipe_layanan === 'Antar Jemput' ? parseOjekDetails(task.raw_order_text) : null;
+                                                const kirimData = task.tipe_layanan === 'Kirim Barang' ? parseKirimDetails(task.raw_order_text) : null;
 
-                                            return (
-                                                <div key={task.id} className={`bg-white p-4 rounded-xl border ${isHold ? 'border-orange-300 shadow-orange-100' : (isWaiting ? 'border-red-300 shadow-red-100' : 'border-blue-200 shadow-blue-50')} shadow-sm flex flex-col`}>
+                                                return (
+                                                    <div key={task.id} className={`bg-white p-4 md:rounded-xl md:border-x border-y border-x-0 ${isHold ? 'border-orange-200 bg-orange-50/30' : (isWaiting ? 'border-red-200 bg-red-50/30' : 'border-gray-200')} shadow-none md:shadow-sm flex flex-col`}>
 
                                                     <div className="flex justify-between items-start mb-3 border-b border-gray-100 pb-2">
                                                         <span className={`text-[9px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wider ${isHold ? 'bg-orange-100 text-orange-700' : (isWaiting ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700')}`}>
@@ -4017,6 +4202,7 @@ export default function App() {
                                             )
                                         })}
                                     </div>
+                                    </div>
                                 )}
 
                                 {/* TAB RIWAYAT */}
@@ -4055,6 +4241,13 @@ export default function App() {
                                             <div className="grid grid-cols-1 gap-4">
                                                 {(() => {
                                                     return (<>
+                                                        {isFetchingHistory ? (
+                                                            <div className="flex flex-col items-center justify-center py-12 text-gray-500 col-span-full">
+                                                                <div className="w-10 h-10 border-4 border-gray-200 border-t-[#004aad] rounded-full animate-spin mb-4"></div>
+                                                                <p className="font-bold text-sm">Memuat Riwayat...</p>
+                                                            </div>
+                                                        ) : (
+                                                            <>
                                                         {courierAnalytics.history.slice(0, adminHistoryLimit).map((o, idx) => {
                                                             const isFinal = o._viewMode === 'final';
                                                             const isNyerah = o._viewMode === 'failed';
@@ -4173,6 +4366,8 @@ export default function App() {
                                                                 </div>
                                                             )
                                                         })}
+                                                            </>
+                                                        )}
                                                     </>)
                                                 })()}
                                             </div>
@@ -4868,3 +5063,4 @@ export default function App() {
         </div>
     );
 }
+

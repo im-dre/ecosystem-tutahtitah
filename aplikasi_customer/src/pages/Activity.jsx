@@ -166,11 +166,11 @@ export default function Activity() {
     const { data, error } = await supabase
       .from('orders')
       // Menggunakan syntax relasi spesifik foreign key jika ada ambiguitas
-      .select('*, employees!assigned_courier_id(full_name), merchants(id, name, logo_url)')
+      .select('id, created_at, status, total_price, total_amount, delivery_fee, tipe_layanan, items, merchant_id, is_deleted, is_favorite, employees!assigned_courier_id(full_name), merchants(id, name, logo_url)')
       .eq('customer_id', userId)
       .neq('is_deleted', true)  // Jangan tampilkan order yang sudah dihapus admin
-      .order('id', { ascending: false });
-
+      .order('created_at', { ascending: false })
+      .limit(20);
     if (error) {
       console.error("Fetch orders error:", error);
       toast.error('Gagal memuat aktivitas pesanan', { id: 'fetch-orders' });
@@ -336,7 +336,10 @@ export default function Activity() {
         async (payload) => {
           if (payload.eventType === 'INSERT') {
             // Need to fetch to get relational data like employee name
-            const { data } = await supabase.from('orders').select('*, employees!assigned_courier_id(full_name)').eq('id', payload.new.id).single();
+            const { data } = await supabase.from('orders')
+              .select('id, created_at, status, total_price, total_amount, delivery_fee, tipe_layanan, items, merchant_id, is_deleted, is_favorite, employees!assigned_courier_id(full_name), merchants(id, name, logo_url)')
+              .eq('id', payload.new.id)
+              .single();
             if (data) setOrders((prev) => [data, ...prev]);
           } else if (payload.eventType === 'UPDATE') {
             if (payload.new.is_deleted === true) {

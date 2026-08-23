@@ -25,7 +25,7 @@ const CustomCourierSelect = ({
   const activeCouriers = useMemo(
     () =>
       couriersList
-        .filter((c) => !(c.pin && c.pin.startsWith("BANNED_")))
+        .filter((c) => !(c.pin && c.pin.startsWith("BANNED_")) && c.is_online === true)
         .sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "")),
     [couriersList]
   );

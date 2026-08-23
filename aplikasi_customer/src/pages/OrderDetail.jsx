@@ -55,6 +55,8 @@ export default function OrderDetail() {
   const [ratingTargetName, setRatingTargetName] = useState('');
   const [ratingInitialValue, setRatingInitialValue] = useState(0);
 
+  const [orderReports, setOrderReports] = useState([]);
+
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportTargetId, setReportTargetId] = useState(null);
   const [reportTargetType, setReportTargetType] = useState(null);
@@ -144,12 +146,26 @@ export default function OrderDetail() {
         .select('*')
         .eq('order_id', id);
       if (ratingData) setOrderRatings(ratingData);
+
+      const { data: reportData } = await supabase
+        .from('reports')
+        .select('id, target_id, target_type')
+        .eq('order_id', id);
+      if (reportData) setOrderReports(reportData);
     } catch (error) {
       console.error("Fetch order detail error:", error);
       toast.error('Gagal memuat detail pesanan');
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchOrderReports = async () => {
+    const { data } = await supabase
+      .from('reports')
+      .select('id, target_id, target_type')
+      .eq('order_id', id);
+    if (data) setOrderReports(data);
   };
 
   const setupRealtime = () => {
@@ -832,18 +848,32 @@ export default function OrderDetail() {
                 </div>
               </div>
               <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setReportTargetId(order.assigned_courier_id);
-                    setReportTargetType('courier');
-                    setReportTargetName(order.employees?.full_name || 'Kurir');
-                    setShowReportModal(true);
-                  }}
-                  className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center border border-red-100 hover:bg-red-100 active:scale-90 transition-all shrink-0"
-                  title="Laporkan Kurir"
-                >
-                  <Flag size={18} />
-                </button>
+                {(() => {
+                  const alreadyReported = orderReports.some(
+                    r => r.target_id === order.assigned_courier_id && r.target_type === 'courier'
+                  );
+                  return alreadyReported ? (
+                    <div className="flex flex-col items-center gap-0.5">
+                      <div className="w-10 h-10 rounded-full bg-red-500 text-white flex items-center justify-center shrink-0" title="Sudah Dilaporkan">
+                        <Flag size={18} className="fill-white" />
+                      </div>
+                      <span className="text-[9px] font-bold text-red-500">Dilaporkan</span>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setReportTargetId(order.assigned_courier_id);
+                        setReportTargetType('courier');
+                        setReportTargetName(order.employees?.full_name || 'Kurir');
+                        setShowReportModal(true);
+                      }}
+                      className="w-10 h-10 rounded-full bg-red-50 text-red-500 flex items-center justify-center border border-red-100 hover:bg-red-100 active:scale-90 transition-all shrink-0"
+                      title="Laporkan Kurir"
+                    >
+                      <Flag size={18} />
+                    </button>
+                  );
+                })()}
                 <button
                   onClick={async () => {
                     const { data: { user } } = await supabase.auth.getUser();
@@ -1016,7 +1046,10 @@ export default function OrderDetail() {
       {/* Report Modal */}
       <ReportModal
         isOpen={showReportModal}
-        onClose={() => setShowReportModal(false)}
+        onClose={(didReport) => {
+          setShowReportModal(false);
+          if (didReport) fetchOrderReports();
+        }}
         targetId={reportTargetId}
         targetType={reportTargetType}
         customerId={user?.id}

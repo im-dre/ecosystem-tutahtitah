@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
+import { compressImage } from '../lib/compressImage';
 import { ArrowLeft, Send, Store, User, Bike, Paperclip, Image as ImageIcon, Package, Receipt, X, ChevronRight, Copy, Trash2, MoreVertical, Flag, Star, Heart, MessageCircle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import dayjs from 'dayjs';
@@ -78,6 +79,7 @@ export default function ChatRoom() {
   const longPressTimer = useRef(null);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const lastMsgTimestampRef = useRef(null); // Track timestamp pesan terakhir untuk polling
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -166,6 +168,10 @@ export default function ChatRoom() {
 
       if (!messagesError && messagesData) {
         setMessages(messagesData);
+        // Simpan timestamp pesan terakhir untuk polling
+        if (messagesData.length > 0) {
+          lastMsgTimestampRef.current = messagesData[messagesData.length - 1].created_at;
+        }
       }
       setLoading(false);
       setTimeout(scrollToBottom, 100);
@@ -204,10 +210,15 @@ export default function ChatRoom() {
           filter: `chat_id=eq.${id}`
         },
         (payload) => {
-          setMessages(prev => [...prev, payload.new]);
+          setMessages(prev => {
+            if (prev.find(m => m.id === payload.new.id)) return prev;
+            // Update timestamp referensi
+            lastMsgTimestampRef.current = payload.new.created_at;
+            return [...prev, payload.new];
+          });
           setTimeout(scrollToBottom, 100);
           
-          // Mark as read if not from customer
+          // Mark as read segera karena customer lagi buka chat room ini
           if (payload.new.sender_type !== 'customer') {
             supabase
               .from('messages')
@@ -283,7 +294,7 @@ export default function ChatRoom() {
     setMessages(prev => [...prev, optimisticMsg]);
     setTimeout(scrollToBottom, 50);
 
-    const { error } = await supabase
+    const { data: realMsg, error } = await supabase
       .from('messages')
       .insert({
         chat_id: id,
@@ -291,12 +302,18 @@ export default function ChatRoom() {
         sender_type: 'customer',
         content: content,
         metadata: finalMetadata
-      });
+      })
+      .select()
+      .single();
 
     if (error) {
       console.error('Failed to send message:', error);
       setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
     } else {
+      // Ganti temp message dengan row asli dari DB
+      // Realtime event yang datang belakangan akan di-skip karena ID sudah ada
+      setMessages(prev => prev.map(m => m.id === optimisticMsg.id ? realMsg : m));
+      if (realMsg) lastMsgTimestampRef.current = realMsg.created_at;
       await supabase
         .from('chats')
         .update({ updated_at: new Date().toISOString() })
@@ -326,7 +343,12 @@ export default function ChatRoom() {
       return;
     }
 
-    let query = supabase.from('orders').select('*, merchants(name, logo_url)').eq('customer_id', profile.id).neq('is_deleted', true).order('created_at', { ascending: false });
+    let query = supabase.from('orders')
+      .select('id, created_at, status, total_price, total_amount, delivery_fee, tipe_layanan, items, merchant_id, is_deleted, merchants(name, logo_url)')
+      .eq('customer_id', profile.id)
+      .neq('is_deleted', true)
+      .order('created_at', { ascending: false })
+      .limit(20);
     
     const { data } = await query;
     if (data) {
@@ -404,16 +426,19 @@ export default function ChatRoom() {
     if (!file) return;
     setShowAttachMenu(false);
     
-    const loadingToast = toast.loading('Menyiapkan gambar...');
+    const loadingToast = toast.loading('Mengompres gambar...');
     setIsUploading(true);
     
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${fileExt}`;
+      // Kompres gambar sebelum upload (maks 1280px, kualitas 75%, format WebP)
+      const compressed = await compressImage(file, { maxWidth: 1280, maxHeight: 1280, quality: 0.75 });
+      console.log(`Kompresi: ${(file.size / 1024).toFixed(0)}KB → ${(compressed.size / 1024).toFixed(0)}KB`);
+
+      const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.webp`;
       
       const { error: uploadError } = await supabase.storage
         .from('chat-images')
-        .upload(fileName, file);
+        .upload(fileName, compressed, { contentType: 'image/webp' });
 
       if (uploadError) throw uploadError;
 

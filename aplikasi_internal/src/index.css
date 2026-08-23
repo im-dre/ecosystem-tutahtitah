@@ -1,6 +1,99 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  body {
+    /* Prevent text selection everywhere except inputs */
+    -webkit-user-select: none;
+    user-select: none;
+    /* Prevent pull-to-refresh overscroll */
+    overscroll-behavior-y: none;
+    /* Remove tap highlight color */
+    -webkit-tap-highlight-color: transparent;
+  }
+  
+  input, textarea {
+    -webkit-user-select: auto;
+    user-select: auto;
+  }
+}
+
 .hide-scrollbar::-webkit-scrollbar { display: none; }
 .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── SweetAlert2 Native iOS Style Overrides ── */
+body.swal2-shown:not(.swal2-no-backdrop):not(.swal2-toast-shown) {
+  /* Prevent background scrolling */
+  overflow: hidden !important;
+}
+.swal2-backdrop-show {
+  background: rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: blur(5px) !important;
+  -webkit-backdrop-filter: blur(5px) !important;
+}
+.swal2-popup {
+  border-radius: 20px !important;
+  padding: 1rem 0 0 0 !important; /* Remove bottom padding for edge-to-edge buttons */
+  width: 90% !important;
+  max-width: 320px !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2) !important;
+}
+.swal2-title {
+  font-size: 1.1rem !important;
+  padding: 0 1.5rem !important;
+}
+.swal2-html-container {
+  font-size: 0.85rem !important;
+  padding: 0 1.5rem 1.5rem 1.5rem !important;
+  margin-top: 0.5rem !important;
+}
+.swal2-actions {
+  margin: 0 !important;
+  width: 100% !important;
+  border-top: 1px solid #e5e7eb !important;
+  display: flex !important;
+  border-radius: 0 0 20px 20px !important;
+  overflow: hidden !important;
+}
+.swal2-actions > button {
+  flex: 1 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  padding: 1rem !important;
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+  background: transparent !important;
+  color: #007aff !important; /* iOS Blue */
+}
+.swal2-actions > button:active {
+  background: #f3f4f6 !important;
+}
+.swal2-cancel {
+  border-right: 1px solid #e5e7eb !important;
+  color: #ef4444 !important; /* iOS Red for cancel/danger */
+  font-weight: 500 !important;
+}
+.swal2-confirm {
+  font-weight: 700 !important;
+}
+.swal2-icon {
+  margin: 1.5rem auto 1rem auto !important;
+  transform: scale(0.8) !important;
+}
+/* Input styles for Swal */
+.swal2-input, .swal2-textarea {
+  border-radius: 10px !important;
+  border: 1px solid #e5e7eb !important;
+  font-size: 0.9rem !important;
+  margin: 1em 1.5rem 0 1.5rem !important;
+  width: calc(100% - 3rem) !important;
+  box-shadow: none !important;
+}
+.swal2-input:focus, .swal2-textarea:focus {
+  border-color: #007aff !important;
+  outline: none !important;
+}
+@keyframes slideDown { from { transform: translate(-50%, -20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+.toast-animate { animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }

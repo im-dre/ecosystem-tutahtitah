@@ -101,8 +101,8 @@ const ManualOrderModal = ({
                   {customersList
                     .filter(
                       (c) =>
-                        c.name.toLowerCase().includes(manualForm.name.toLowerCase()) ||
-                        c.phone.includes(manualForm.name)
+                        (c.name || "").toLowerCase().includes((manualForm.name || "").toLowerCase()) ||
+                        (c.phone || "").includes(manualForm.name || "")
                     )
                     .map((c) => (
                       <div
