@@ -835,6 +835,14 @@ export default function App() {
         if (!user || user.role !== 'courier') return;
         
         const newStatus = !currentStatus;
+
+        if (newStatus === false) {
+            const activeOrders = allOrders.filter(o => (o.status === 'processing' || o.status === 'hold' || o.status === 'delivering') && o.assigned_courier_id === user.id);
+            if (activeOrders.length > 0) {
+                return showNotif("Selesaikan dulu semua orderan yang masih jalan sebelum Offline!", "error");
+            }
+        }
+
         setCouriersList(prev => prev.map(c => c.id === user.id ? { ...c, is_online: newStatus } : c));
         
         try {
