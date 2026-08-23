@@ -616,6 +616,7 @@ export default function App() {
 
     const [dispatchInputs, setDispatchInputs] = useState({});
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+    const [editOngkirModal, setEditOngkirModal] = useState({ isOpen: false, order: null, newOngkir: '' });
     const [isAttachmentModalOpen, setIsAttachmentModalOpen] = useState(false);
     const [attachmentOrder, setAttachmentOrder] = useState(null);
     const [editingOrder, setEditingOrder] = useState(null);
@@ -827,6 +828,24 @@ export default function App() {
                 setIsCourierSettingsOpen(true);
             }
         } catch (err) { console.error(err); }
+    };
+
+    
+    const toggleCourierOnlineStatus = async (currentStatus) => {
+        if (!user || user.role !== 'courier') return;
+        
+        const newStatus = !currentStatus;
+        setCouriersList(prev => prev.map(c => c.id === user.id ? { ...c, is_online: newStatus } : c));
+        
+        try {
+            const { error } = await supabase.from('employees').update({ is_online: newStatus }).eq('id', user.id);
+            if (error) throw error;
+            showNotif(`Status berhasil diubah menjadi ${newStatus ? 'ONLINE' : 'OFFLINE'}`, "success");
+        } catch (err) {
+            console.error("Gagal update status online:", err);
+            setCouriersList(prev => prev.map(c => c.id === user.id ? { ...c, is_online: currentStatus } : c));
+            showNotif("Gagal merubah status", "error");
+        }
     };
 
     const submitCourierSettings = async (e) => {
@@ -1158,7 +1177,7 @@ export default function App() {
     const fetchAllHistoricalOrders = async () => {
         setLoading(true);
         try {
-            const { data: ordersData } = await supabase.from("orders").select("*").eq("is_deleted", false).order("created_at", { ascending: false });
+            const { data: ordersData } = await supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers").eq("is_deleted", false).order("created_at", { ascending: false });
             if (ordersData) setAllOrders(ordersData);
             toast.success("Berhasil memuat seluruh riwayat pesanan");
         } catch (error) {
@@ -1174,11 +1193,13 @@ export default function App() {
         try {
             const oneMonthAgo = new Date();
             oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-            const { data: ordersData } = await supabase.from("orders").select("*").gte('created_at', oneMonthAgo.toISOString()).eq("is_deleted", false).order("created_at", { ascending: false });
-            const { data: couriersData } = await supabase.from("employees").select("*").eq("role", "courier");
-            const { data: allEmpData } = await supabase.from("employees").select("*").order("role", { ascending: true });
-            const { data: customersData } = await supabase.from("customers").select("*");
-            const { data: rawRatingsData } = await supabase.from("ratings").select("*").eq("target_type", "courier");
+            const { data: activeOrders } = await supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers").in("status", ["pending", "processing", "hold", "waiting_customer", "searching_courier", "courier_found", "on_delivery", "picking_up", "item_ready", "delivering"]).eq("is_deleted", false).order("created_at", { ascending: false });
+            const { data: historyOrders } = await supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers").in("status", ["completed", "cancelled", "unreachable"]).order("created_at", { ascending: false }).limit(30);
+            const ordersData = [...(activeOrders || []), ...(historyOrders || [])];
+            const { data: couriersData } = await supabase.from("employees").select("id, full_name, pin, role, warning_points, bank_name, account_number, bank_name_2, account_number_2, is_super_admin, is_online").eq("role", "courier");
+            const { data: allEmpData } = await supabase.from("employees").select("id, full_name, role, email, phone, pin, bank_name, account_number, bank_name_2, account_number_2, warning_points, is_online").order("role", { ascending: true });
+            const { data: customersData } = await supabase.from("customers").select("id, name, phone, address, auth_id, created_at").order("created_at", { ascending: false }).limit(3000);
+            const { data: rawRatingsData } = await supabase.from("ratings").select("id, order_id, target_id, target_type, rating, review").eq("target_type", "courier").order("created_at", { ascending: false }).limit(100);
             
             // Filter out ratings from soft-deleted AND hard-deleted orders manually
             let validOrderIds = new Set();
@@ -1647,27 +1668,36 @@ export default function App() {
     };
 
     const handleDeleteOrder = async (orderId) => {
-        const result = await Swal.fire({
-            title: 'PERINGATAN BAHAYA!',
-            text: 'Apakah Anda yakin ingin MENGHAPUS PERMANEN orderan ini dari database? Aksi ini tidak dapat dibatalkan.',
-            icon: 'warning',
+        const { value: text } = await Swal.fire({
+            title: "Hapus Permanen?",
+            input: "textarea",
+            inputLabel: "Alasan penghapusan",
+            inputPlaceholder: "Tuliskan alasan...",
+            inputAttributes: {
+                "aria-label": "Tuliskan alasan penghapusan di sini"
+            },
             showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Ya, Hapus Permanen!',
-            cancelButtonText: 'Batal'
+            confirmButtonColor: "#d33",
+            cancelButtonColor: "#3085d6",
+            confirmButtonText: "Ya, Hapus",
+            cancelButtonText: "Batal",
+            inputValidator: (value) => {
+                if (!value) {
+                    return "Anda harus mengisi alasan penghapusan!";
+                }
+            }
         });
         
-        if (!result.isConfirmed) return;
-
-        try {
-            const { error } = await supabase.from('orders').update({ is_deleted: true }).eq('id', orderId);
-            if (error) throw error;
-            setAllOrders(prev => prev.filter(o => o.id !== orderId));
-            showNotif("Orderan berhasil dihapus permanen!", "success");
-        } catch (err) {
-            console.error(err);
-            showNotif(`Gagal menghapus: ${err.message}`, "error");
+        if (text) {
+            try {
+                const { error } = await supabase.from('orders').update({ is_deleted: true, kendala_info: `Dihapus Permanen: ${text}` }).eq('id', orderId);
+                if (error) throw error;
+                setAllOrders(prev => prev.filter(o => o.id !== orderId));
+                showNotif("Orderan berhasil dihapus permanen!", "success");
+            } catch (err) {
+                console.error(err);
+                showNotif(`Gagal menghapus: ${err.message}`, "error");
+            }
         }
     };
 
@@ -1936,6 +1966,28 @@ export default function App() {
         });
     };
 
+    const handleEditOngkirAdmin = (order) => {
+        setEditOngkirModal({ isOpen: true, order: order, newOngkir: order.delivery_fee || '' });
+    };
+
+    const submitEditOngkirAdmin = async () => {
+        const { order, newOngkir } = editOngkirModal;
+        if (!newOngkir) return showNotif('Ongkir baru wajib diisi!', 'error');
+        
+        try {
+            const parsedOngkir = parseInt(newOngkir);
+            const { error } = await supabase.from('orders').update({ delivery_fee: parsedOngkir }).eq('id', order.id);
+            if (error) throw error;
+            
+            setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, delivery_fee: parsedOngkir } : o));
+            showNotif("Ongkir berhasil diubah admin", "success");
+            setEditOngkirModal({ isOpen: false, order: null, newOngkir: '' });
+        } catch (err) {
+            console.error("Gagal update ongkir admin:", err);
+            showNotif("Gagal mengubah ongkir", "error");
+        }
+    };
+
     const handleKirimTagihanKeCustomer = async (order) => {
         showNotif("Membuat Struk Tagihan HD...", "success");
         try {
@@ -2170,14 +2222,27 @@ export default function App() {
                                 <p className="text-[10px] text-gray-400 font-medium">Tutahtitah Mitra Delivery</p>
                             </div>
                         </div>
-                        {/* Tanggal di sisi kanan */}
+                        {/* Tanggal & Toggle di sisi kanan */}
                         <div className="text-right shrink-0">
                             <p className="text-[10px] font-bold text-[#004aad] leading-tight capitalize">
                                 {new Date().toLocaleDateString('id-ID', { weekday: 'long' })}
                             </p>
-                            <p className="text-[10px] font-bold text-gray-500 leading-tight">
+                            <p className="text-[10px] font-bold text-gray-500 leading-tight mb-1">
                                 {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long' })}
                             </p>
+                            {(() => {
+                                const isOnline = couriersList.find(c => c.id === user?.id)?.is_online || false;
+                                return (
+                                    <div className="flex items-center gap-1.5 justify-end cursor-pointer" onClick={() => toggleCourierOnlineStatus(isOnline)}>
+                                        <span className={`text-[8px] font-bold ${isOnline ? 'text-emerald-600' : 'text-gray-400'}`}>
+                                            {isOnline ? 'ONLINE' : 'OFFLINE'}
+                                        </span>
+                                        <div className={`w-7 h-3.5 flex items-center rounded-full p-0.5 transition-colors ${isOnline ? 'bg-emerald-500' : 'bg-gray-300'}`}>
+                                            <div className={`bg-white w-2.5 h-2.5 rounded-full shadow-sm transform transition-transform ${isOnline ? 'translate-x-3.5' : 'translate-x-0'}`}></div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 )
@@ -2220,13 +2285,6 @@ export default function App() {
                                 <span className="leading-none mt-1 md:mt-0 md:hidden">Analitik</span>
                                 <span className="hidden md:inline">Laporan & Analitik</span>
                             </button>
-                            <button onClick={() => setAdminMainTab('pengaduan')} className={`flex flex-col md:flex-row items-center justify-center gap-1 py-1 md:px-4 md:py-3 font-bold text-[10px] md:text-sm w-full md:w-auto transition-all duration-300 md:border-b-2 whitespace-nowrap ${adminMainTab === 'pengaduan' ? 'text-red-600 md:border-red-600 -translate-y-1 md:translate-y-0' : 'text-gray-400 md:text-gray-500 md:border-transparent hover:text-gray-700 hover:bg-gray-50'}`}>
-                                <div className={`w-6 h-6 md:w-5 md:h-5 rounded-full flex items-center justify-center transition-all duration-300 ${adminMainTab === 'pengaduan' ? 'bg-red-100 text-red-600 scale-110 drop-shadow-sm md:scale-100 md:drop-shadow-none' : 'bg-gray-100 text-gray-400 grayscale opacity-60 scale-100'}`}>
-                                   <span className="text-[14px]">🚩</span>
-                                </div>
-                                <span className="leading-none mt-1 md:mt-0 md:hidden">Pengaduan</span>
-                                <span className="hidden md:inline">Pusat Pengaduan</span>
-                            </button>
                             <button onClick={() => setAdminMainTab('tim')} className={`flex flex-col md:flex-row items-center justify-center gap-1 py-1 md:px-4 md:py-3 font-bold text-[10px] md:text-sm w-full md:w-auto transition-all duration-300 md:border-b-2 whitespace-nowrap ${adminMainTab === 'tim' ? 'text-[#004aad] md:border-[#004aad] -translate-y-1 md:translate-y-0' : 'text-gray-400 md:text-gray-500 md:border-transparent hover:text-gray-700 hover:bg-gray-50'}`}>
                                 <img src="/tim-icon.webp" className={`w-6 h-6 md:w-5 md:h-5 object-contain transition-all duration-300 ${adminMainTab === 'tim' ? 'scale-110 drop-shadow-sm md:scale-100 md:drop-shadow-none' : 'grayscale opacity-60 scale-100'}`} alt="Tim" />
                                 <span className="leading-none mt-1 md:mt-0 md:hidden">Tim</span>
@@ -2241,131 +2299,6 @@ export default function App() {
 
                         <div className="p-4 sm:p-6">
 
-                            {/* TAB PUSAT PENGADUAN */}
-                            {adminMainTab === 'pengaduan' && (
-                                <div className="space-y-6">
-                                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                        <div>
-                                            <h2 className="text-xl font-black text-gray-900 flex items-center gap-2">
-                                                <span className="text-2xl">🚩</span> Pusat Pengaduan
-                                            </h2>
-                                            <p className="text-sm text-gray-500 mt-1">Laporan dari customer terkait kurir atau toko.</p>
-                                        </div>
-                                        <div className="flex bg-gray-100 p-1 rounded-xl w-full md:w-auto">
-                                            {['all', 'pending', 'forwarded', 'resolved'].map((t) => (
-                                                <button
-                                                    key={t}
-                                                    onClick={() => setPengaduanFilterTab(t)}
-                                                    className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-xs font-bold transition-all ${pengaduanFilterTab === t ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                                                >
-                                                    {t === 'all' ? 'Semua' : t === 'pending' ? 'Menunggu Analisa' : t === 'forwarded' ? 'Diteruskan' : 'Selesai'}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {isFetchingReports ? (
-                                        <div className="flex flex-col items-center justify-center p-10 bg-white rounded-2xl shadow-sm border border-gray-100">
-                                            <div className="w-12 h-12 border-4 border-red-100 border-t-red-500 rounded-full animate-spin"></div>
-                                            <p className="mt-4 font-bold text-gray-500">Memuat data pengaduan...</p>
-                                        </div>
-                                    ) : (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            {reportsData.filter(r => pengaduanFilterTab === 'all' || (r.orders?.is_deleted ? 'resolved' : r.status) === pengaduanFilterTab).length === 0 ? (
-                                                <div className="col-span-full p-10 bg-white rounded-2xl border border-gray-100 text-center">
-                                                    <span className="text-4xl block mb-2">✨</span>
-                                                    <h3 className="font-bold text-gray-800 text-lg">Tidak ada laporan</h3>
-                                                    <p className="text-gray-500 text-sm">Semua aman terkendali.</p>
-                                                </div>
-                                            ) : (
-                                                reportsData.filter(r => pengaduanFilterTab === 'all' || (r.orders?.is_deleted ? 'resolved' : r.status) === pengaduanFilterTab).map(report => {
-                                                    const displayStatus = report.orders?.is_deleted ? 'resolved' : report.status;
-                                                    const customerName = customersList.find(c => c.id === report.customer_id)?.name || 'Customer tidak diketahui';
-                                                    const targetName = report.target_type === 'merchant'
-                                                        ? (portalUmkmData.find(u => u.id === report.target_id)?.nama_toko || 'Toko tidak diketahui')
-                                                        : (couriersList.find(c => c.id === report.target_id)?.full_name || 'Kurir tidak diketahui');
-
-                                                    return (
-                                                        <div key={report.id} className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col gap-3 relative">
-                                                            <div className="flex justify-between items-start gap-2">
-                                                                <div>
-                                                                    <div className="flex items-center gap-2 mb-1">
-                                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${report.target_type === 'merchant' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                                                                            {report.target_type === 'merchant' ? 'Toko/Mitra' : 'Kurir'}
-                                                                        </span>
-                                                                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${displayStatus === 'pending' ? 'bg-yellow-100 text-yellow-700' : displayStatus === 'forwarded' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>
-                                                                            {report.orders?.is_deleted ? 'Selesai (Order Dihapus)' : displayStatus === 'pending' ? 'Menunggu Analisa' : displayStatus === 'forwarded' ? 'Diteruskan' : 'Selesai'}
-                                                                        </span>
-                                                                    </div>
-                                                                    <h3 className="font-bold text-gray-900 leading-tight">Terlapor: {targetName}</h3>
-                                                                    <p className="text-xs text-gray-500">Pelapor: {customerName} &bull; {new Date(report.created_at).toLocaleDateString('id-ID', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}</p>
-                                                                    {report.order_id && (
-                                                                        <p className="text-xs text-gray-500 mt-1">
-                                                                            Terkait Order: {' '}
-                                                                            <button 
-                                                                                onClick={() => {
-                                                                                    if (report.orders) {
-                                                                                    setAttachmentOrder({
-                                                                                            id: report.orders.id,
-                                                                                            text: report.orders.raw_order_text,
-                                                                                            status: report.orders.status,
-                                                                                            kendala_info: report.orders.kendala_info
-                                                                                        });
-                                                                                        setIsAttachmentModalOpen(true);
-                                                                                    }
-                                                                                }}
-                                                                                className="font-bold text-[#004aad] hover:underline"
-                                                                            >
-                                                                                #INV-{report.order_id.toString().substring(0, 8).toUpperCase()}
-                                                                            </button>
-                                                                        </p>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                            
-                                                            <div className="bg-red-50 p-3 rounded-xl border border-red-100">
-                                                                <p className="text-sm text-red-900 font-medium">"{report.reason}"</p>
-                                                            </div>
-
-                                                            {report.admin_notes && (
-                                                                <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
-                                                                    <p className="text-[11px] text-gray-500 font-bold mb-1 uppercase">Catatan Admin (Untuk Terlapor):</p>
-                                                                    <p className="text-sm text-gray-700">{report.admin_notes}</p>
-                                                                </div>
-                                                            )}
-
-                                                            {report.target_feedback && (
-                                                                <div className="bg-blue-50 p-3 rounded-xl border border-blue-100">
-                                                                    <p className="text-[11px] text-blue-500 font-bold mb-1 uppercase">Feedback {report.target_type === 'merchant' ? 'Toko' : 'Kurir'}:</p>
-                                                                    <p className="text-sm text-blue-900 font-medium">"{report.target_feedback}"</p>
-                                                                </div>
-                                                            )}
-
-                                                            <div className="flex gap-2 mt-auto pt-2 border-t border-gray-100">
-                                                                {displayStatus === 'pending' && (
-                                                                    <button onClick={() => handleTeruskanPengaduan(report)} className="flex-1 bg-orange-100 hover:bg-orange-200 text-orange-700 font-bold py-2 rounded-xl text-xs transition">
-                                                                        Teruskan Laporan
-                                                                    </button>
-                                                                )}
-                                                                {displayStatus !== 'resolved' && (
-                                                                    <div className="flex gap-2 w-full mt-2">
-                                                                        <button onClick={() => handleResolution(report, 'suspend')} className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2 rounded-xl text-xs transition shadow-sm">
-                                                                            Suspend Akun
-                                                                        </button>
-                                                                        <button onClick={() => handleResolution(report, 'warning')} className="flex-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 font-bold py-2 rounded-xl text-xs transition shadow-sm">
-                                                                            Jadikan Peringatan
-                                                                        </button>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    )
-                                                })
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
 
                             {/* TAB HRD / MANAJEMEN TIM KHUSUS ADMIN */}
                             {adminMainTab === 'tim' && (
@@ -2533,9 +2466,14 @@ export default function App() {
                                             🚫 Toko Di-Suspend ({portalUmkmData.filter(x => x.status && x.status.toLowerCase() === 'suspended').length})
                                         </button>
 
-                                        {/* 4. Testimoni */}
+                                                                                                                        {/* 4. Testimoni */}
                                         <button onClick={() => setPortalTab('testimoni')} className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm transition ${portalTab === 'testimoni' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
                                             💬 Verifikasi Testimoni ({portalTestimoniData.length})
+                                        </button>
+
+                                        {/* 5. Pengaduan */}
+                                        <button onClick={() => setPortalTab('pengaduan')} className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm transition ${portalTab === 'pengaduan' ? 'bg-red-50 text-red-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
+                                            🚩 Pusat Pengaduan
                                         </button>
 
                                     </div>
@@ -3239,10 +3177,20 @@ export default function App() {
                                                                                 {o.bill_sent ? 'Sudah Dikirim ke Customer ✅' : 'Belum Dikirim ke Customer ❌'}
                                                                             </span>
                                                                         </div>
-
+                                                                        <div className="flex justify-between items-center mb-1">
+                                                                            <span className="text-[10px] font-bold text-gray-500 uppercase">Total Belanjaan:</span>
+                                                                            <span className="text-sm font-bold text-gray-700 notranslate">Rp {parseFloat(o.total_price || 0).toLocaleString('id-ID')}</span>
+                                                                        </div>
                                                                         <div className="flex justify-between items-center mb-2">
-                                                                            <span className="text-[10px] font-bold text-gray-500 uppercase">Total Tagihan (Inc. Ongkir):</span>
-                                                                            <span className="text-sm font-bold text-blue-700 notranslate">Rp {(parseFloat(o.total_price || 0) + parseFloat(o.delivery_fee || 0)).toLocaleString('id-ID')}</span>
+                                                                            <span className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
+                                                                                Total Ongkir: 
+                                                                                <button onClick={() => handleEditOngkirAdmin(o)} className="text-blue-500 hover:text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ml-1 text-[8px] flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 256 256"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"></path></svg> Edit</button>
+                                                                            </span>
+                                                                            <span className="text-sm font-bold text-orange-600 notranslate">Rp {parseFloat(o.delivery_fee || 0).toLocaleString('id-ID')}</span>
+                                                                        </div>
+                                                                        <div className="flex justify-between items-center mb-2 pt-1 border-t border-dashed border-gray-200">
+                                                                            <span className="text-[11px] font-extrabold text-gray-800 uppercase">Grand Total:</span>
+                                                                            <span className="text-sm font-extrabold text-blue-700 notranslate">Rp {(parseFloat(o.total_price || 0) + parseFloat(o.delivery_fee || 0)).toLocaleString('id-ID')}</span>
                                                                         </div>
                                                                         <button onClick={() => handleKirimTagihanKeCustomer(o)} className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white py-2.5 rounded-lg text-[11px] font-bold shadow-md transition flex items-center justify-center gap-1.5">
                                                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256"><path d="M187.58,144.84l-32-16a8,8,0,0,0-8,.5l-14.69,9.8a40.55,40.55,0,0,1-38.6-38.6l9.8-14.69a8,8,0,0,0,.5-8l-16-32A8,8,0,0,0,80,40a24,24,0,0,0-24,24c0,76.22,63.78,140,140,140a24,24,0,0,0,24-24A8,8,0,0,0,211.58,172.58Z" opacity="0.2"></path><path d="M232,112.44v37.66a8,8,0,0,1-16,0V112.44A88,88,0,0,0,128.44,24a8,8,0,0,1,0-16A104,104,0,0,1,232,112.44Zm-47.53,8.08a8,8,0,0,0-11.31-11.31A39.9,39.9,0,0,0,144.88,80.89a8,8,0,0,0,0,16A23.94,23.94,0,0,1,184.47,120.52ZM128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-6.54-.67L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Zm65.76-60.45a24,24,0,0,1-23.7,28.45c-66,0-120-54-120-120a24,24,0,0,1,28.45-23.71,16,16,0,0,1,13.12,11.62l16,32a16,16,0,0,1-1,16L91.9,114.61a56.55,56.55,0,0,0,49.49,49.49l14.69-14.73a16,16,0,0,1,16-1l32,16A16,16,0,0,1,216,177.58l-22.24,38.53Z"></path></svg>
@@ -4743,6 +4691,68 @@ export default function App() {
                 onClose={() => setIsAttachmentModalOpen(false)}
                 order={attachmentOrder}
             />
+
+            {/* MODAL EDIT ONGKIR */}
+            {editOngkirModal.isOpen && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" onClick={() => setEditOngkirModal({ isOpen: false, order: null, newOngkir: '' })}></div>
+                    <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl relative z-10 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        {/* Header */}
+                        <div className="bg-gradient-to-r from-[#004aad] to-blue-600 px-5 py-4">
+                            <h3 className="text-white font-bold text-lg flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 256 256"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"></path></svg>
+                                Edit Ongkir Kurir
+                            </h3>
+                        </div>
+                        
+                        {/* Body */}
+                        <div className="p-5">
+                            <div className="mb-5 bg-blue-50/50 p-4 rounded-xl border border-blue-100 flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs text-gray-500 mb-0.5 uppercase font-bold tracking-wide">Ongkir Saat Ini</p>
+                                    <p className="text-lg font-black text-[#004aad]">
+                                        Rp {parseFloat(editOngkirModal.order?.delivery_fee || 0).toLocaleString('id-ID')}
+                                    </p>
+                                </div>
+                                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 256 256"><path d="M245.54,115.65,224,94.12V48a8,8,0,0,0-8-8H200V24a8,8,0,0,0-8-8H160a8,8,0,0,0-8,8V40H64V24a8,8,0,0,0-8-8H40a8,8,0,0,0-8,8V40H16a8,8,0,0,0,0,16H32V94.12L10.46,115.65a8,8,0,0,0,0,11.31l12,12A8,8,0,0,0,33.56,134a40,40,0,0,1,60.88,0,8,8,0,0,0,11.12,4.94l22.44-9.35,22.44,9.35a8,8,0,0,0,11.12-4.94,40,40,0,0,1,60.88,0,8,8,0,0,0,11.12-4.94l12-12A8,8,0,0,0,245.54,115.65ZM48,56H208V81.37L181.65,107.7a8,8,0,0,0,0,11.32A55.69,55.69,0,0,0,212.78,136c-11.89,6-25,10.6-40.42,4.19l-38.25-15.94a8,8,0,0,0-6.14,0l-38.29,16C74,146.68,60.89,142,49,136a55.69,55.69,0,0,0,31.13-17A8,8,0,0,0,80.12,107.7L48,81.37ZM184,232H72a8,8,0,0,1,0-16H184a8,8,0,0,1,0,16Z"></path></svg>
+                                </div>
+                            </div>
+                            
+                            <div className="mb-2">
+                                <label className="block text-[11px] font-bold text-gray-600 mb-2 uppercase tracking-wide">Masukkan Ongkir Baru</label>
+                                <div className="relative">
+                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">Rp</span>
+                                    <input 
+                                        type="number" 
+                                        className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm font-bold rounded-xl focus:ring-2 focus:ring-[#004aad] focus:border-[#004aad] block pl-10 pr-4 py-3.5 transition-all outline-none" 
+                                        placeholder="Contoh: 15000"
+                                        value={editOngkirModal.newOngkir}
+                                        onChange={(e) => setEditOngkirModal(p => ({ ...p, newOngkir: e.target.value }))}
+                                        autoFocus
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* Footer */}
+                        <div className="p-4 bg-gray-50 flex gap-3 border-t border-gray-100">
+                            <button 
+                                onClick={() => setEditOngkirModal({ isOpen: false, order: null, newOngkir: '' })}
+                                className="flex-1 px-4 py-3 rounded-xl text-gray-600 font-bold text-[13px] bg-white border border-gray-200 hover:bg-gray-50 hover:text-gray-900 transition-colors"
+                            >
+                                Batal
+                            </button>
+                            <button 
+                                onClick={submitEditOngkirAdmin}
+                                className="flex-1 px-4 py-3 rounded-xl text-white font-bold text-[13px] bg-[#004aad] hover:bg-blue-800 shadow-md hover:shadow-lg transition-all"
+                            >
+                                Simpan Ongkir
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* MODAL EDIT ORDER */}
             <EditOrderModal
