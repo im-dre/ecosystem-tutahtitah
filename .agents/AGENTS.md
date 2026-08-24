@@ -12,3 +12,9 @@ When working on the `aplikasi_customer` project, strictly follow this developmen
 - **Tone/Style**: Always use casual, friendly Indonesian slang ('Bro', 'Gue', 'Lu'). Be enthusiastic and proactive.
 - **Current Progress**: Completed Tahap 2 Point 2 (Fitur Lapor untuk admin/kurir/merchant). Implemented full report resolution flow: "Suspend" and "Jadikan Peringatan" for both Couriers and Merchants in `aplikasi_internal`. Updates include modifying database schemas (`warning_points`, `resolution_action`), implementing full-screen "AKUN DIBEKUKAN" blocker for suspended couriers, and a "Total Peringatan" card in the Courier's Dashboard. Fixed all reference bugs. Pushed all changes to GitHub.
 - **Next Agenda**: Wait for the user to return and say "Bro". The next step is Tahap 2 Point 3: Live chat integration to forward report resolution feedback from Admin to Customer. Wait for their cue to start.
+
+### Keamanan & Arsitektur Database (SOP Egress)
+- **Database Types**: Wajib gunakan tipe dari file `database.types.ts` yang ada di `src/types/` (contoh: `createClient<Database>`). Dilarang keras melakukan fetch skema manual.
+- **Egress-Safe**: Haram hukumnya pakai `select('*')`. Selalu tulis nama kolom spesifik secara eksplisit. Wajib pakai limit/pagination untuk semua operasi list data.
+- **Zero-Looping**: Dilarang meletakkan query Supabase di dalam `useEffect` tanpa dependency array yang ketat.
+- **Scope Control**: Jangan merombak kodingan di luar fitur yang sedang dikerjakan. Wajib meminta approval gue per micro-task.
