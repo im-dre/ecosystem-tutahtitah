@@ -14,10 +14,14 @@ import {
     parseJastipItems, parseJastipNote, parseJastipItemsObjects,
     parseOjekDetails, parseKirimDetails
 } from "./utils/helpers";
+// ✅ [LEVEL 2 #6] Generator struk canvas dipindahkan ke utils
+import { generateReceiptBlob } from "./utils/receiptGenerator";
 // ✅ [TUGAS 1] Import komponen UI dari components/
 import ServiceBadge from "./components/ui/ServiceBadge";
 import SimpleTooltip from "./components/ui/SimpleTooltip";
 import CustomCourierSelect from "./components/ui/CustomCourierSelect";
+import NotifToast from "./components/ui/NotifToast";
+import ImageLightbox from "./components/ui/ImageLightbox";
 import EditOrderModal from "./components/modals/EditOrderModal";
 import ReportAttachmentModal from "./components/modals/ReportAttachmentModal";
 import HrModal from "./components/modals/HrModal";
@@ -25,6 +29,13 @@ import ManualOrderModal from "./components/modals/ManualOrderModal";
 import KendalaModal from "./components/modals/KendalaModal";
 import CourierSettingsModal from "./components/modals/CourierSettingsModal";
 import ResetPinModal from "./components/modals/ResetPinModal";
+import EditOngkirModal from "./components/modals/EditOngkirModal";
+import AdminNav from "./components/admin/AdminNav";
+import CourierNav from "./components/courier/CourierNav";
+// ✅ [LEVEL 2 #7] Halaman Login di-extract ke pages/
+import LoginPage from "./pages/LoginPage";
+// ✅ [LEVEL 2 #8] Tab Profil Kurir di-extract ke pages/courier/
+import CourierProfilTab from "./pages/courier/CourierProfilTab";
 
 const NOTIF_SOUND_URL = import.meta.env.VITE_NOTIF_SOUND_URL || "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3";
 
@@ -32,10 +43,8 @@ export default function App() {
     const [user, setUser] = useState(null);
 
     const [courierProfile, setCourierProfile] = useState(null);
-    const [isEditingCourierProfile, setIsEditingCourierProfile] = useState(false);
-    const [courierProfileForm, setCourierProfileForm] = useState({});
-    const [showCourierPin, setShowCourierPin] = useState(false);
-    const [isSavingCourierProfile, setIsSavingCourierProfile] = useState(false);
+    // [isEditingCourierProfile, courierProfileForm, showCourierPin, isSavingCourierProfile
+    //  dipindahkan sebagai state lokal ke src/pages/courier/CourierProfilTab.jsx]
 
 
     // 1. Taruh detektor ini di bagian atas komponen sebelum return
@@ -777,13 +786,11 @@ export default function App() {
     };
 
 
-    const handleSaveCourierProfile = async () => {
-        setIsSavingCourierProfile(true);
+    // Terima form dari CourierProfilTab, return true kalau sukses (untuk nutup edit mode di tab)
+    const saveCourierProfile = async (f) => {
         const toastId = toast.loading("Menyimpan profil...");
         try {
-            const f = courierProfileForm;
-
-            if (f.pin && f.pin.length < 6) return showNotif("PIN minimal 6 karakter/angka!", "error");
+            if (f.pin && f.pin.length < 6) { showNotif("PIN minimal 6 karakter/angka!", "error"); toast.dismiss(toastId); return false; }
 
             if (f.pin !== courierProfile.pin) {
                 const { error: authUpdateError } = await supabase.rpc('update_employee_password', { user_id: courierProfile.auth_id, new_password: f.pin });
@@ -810,13 +817,12 @@ export default function App() {
             // Perbarui local state
             setUser(prev => ({ ...prev, name: f.full_name }));
             setCourierProfile(prev => ({ ...prev, ...f, email: f.email.trim() }));
-            setIsEditingCourierProfile(false);
             toast.success("Profil berhasil diperbarui!", { id: toastId });
             fetchData();
+            return true;
         } catch (err) {
             toast.error(`Gagal menyimpan: ${err.message}`, { id: toastId });
-        } finally {
-            setIsSavingCourierProfile(false);
+            return false;
         }
     };
 
@@ -1360,19 +1366,7 @@ export default function App() {
         } catch (err) { console.error(err); }
     };
 
-    const handleEditCourierProfile = () => {
-        setCourierProfileForm({
-            full_name: courierProfile?.full_name || '',
-            email: courierProfile?.email || '',
-            phone: courierProfile?.phone || '',
-            bank_name: courierProfile?.bank_name || '',
-            account_number: courierProfile?.account_number || '',
-            bank_name_2: courierProfile?.bank_name_2 || '',
-            account_number_2: courierProfile?.account_number_2 || '',
-            pin: courierProfile?.pin || ''
-        });
-        setIsEditingCourierProfile(true);
-    };
+    // [handleEditCourierProfile dipindahkan ke src/pages/courier/CourierProfilTab.jsx]
 
     useEffect(() => {
         if (!user) return;
@@ -1913,172 +1907,11 @@ export default function App() {
         } catch (err) { showNotif(`Gagal update`, "error"); }
     };
 
-    // GENERATOR GAMBAR STRUK NATIVE HTML5 CANVAS DENGAN PIXEL SCALING (HD MODE)
-    // GENERATOR GAMBAR STRUK (ALL SERVICES SUPPORTED)
+    // GENERATOR STRUK: logika canvas dipindahkan ke src/utils/receiptGenerator.js
     const generateAndCopyReceipt = async (order) => {
-        return new Promise((resolve, reject) => {
-            const courier = couriersList.find(c => c.id === order.assigned_courier_id) || {};
-            let isBelanja = order.tipe_layanan === 'Belanja';
-            let parsedItems = [];
-
-            if (isBelanja) {
-                if (order.bill_details) {
-                    const lines = order.bill_details.split('\n').filter(l => l.trim().length > 0);
-                    parsedItems = lines.map(line => {
-                        const match = line.match(/^- (.*):\s*Rp\s*(.*)$/);
-                        if (match) return { name: match[1].trim(), priceText: match[2].trim() };
-                        return { name: line.replace(/^- /, ''), priceText: '0' };
-                    });
-                } else {
-                    const rawItems = parseJastipItems(order.raw_order_text);
-                    parsedItems = rawItems.map((item, idx) => {
-                        const p = parseFloat(jastipPrices[`${order.id}_${idx}`]) || 0;
-                        return { name: item, priceText: p.toLocaleString('id-ID') };
-                    });
-                }
-            } else {
-                // Untuk Ojek & Kirim Barang
-                if (order.bill_details) {
-                    parsedItems = order.bill_details.split('\n').filter(l => l.trim().length > 0).map(line => ({ name: line }));
-                } else {
-                    if (order.tipe_layanan === 'Antar Jemput') {
-                        const ojekData = parseOjekDetails(order.raw_order_text);
-                        if (ojekData) parsedItems = [{ name: `Titik Jemput: ${ojekData.jemput}` }, { name: `Tujuan: ${ojekData.tujuan}` }];
-                    } else if (order.tipe_layanan === 'Kirim Barang') {
-                        const kirimData = parseKirimDetails(order.raw_order_text);
-                        if (kirimData) parsedItems = [{ name: `Barang: ${kirimData.barang}` }, { name: `Ambil: ${kirimData.ambil}` }, { name: `Tujuan: ${kirimData.tujuan}` }, { name: `Penerima: ${kirimData.penerima}` }, { name: `Note: ${kirimData.note}` }];
-                    }
-                    if (parsedItems.length === 0) parsedItems = [{ name: order.raw_order_text.substring(0, 50) + '...' }];
-                }
-            }
-
-            const itemHeight = isBelanja ? 25 : 22; // Baris untuk ojek dirapatkan dikit biar rapi
-            const scale = 2;
-            const canvas = document.createElement('canvas');
-
-            const baseWidth = 450;
-            const baseHeight = 590 + (parsedItems.length * itemHeight);
-
-            canvas.width = baseWidth * scale;
-            canvas.height = baseHeight * scale;
-            const ctx = canvas.getContext('2d');
-            ctx.scale(scale, scale);
-
-            ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, baseWidth, baseHeight);
-            ctx.fillStyle = '#004aad'; ctx.fillRect(0, 0, baseWidth, 140);
-
-            ctx.strokeStyle = '#ffde59'; ctx.lineWidth = 3;
-            ctx.beginPath(); ctx.moveTo(130, 25); ctx.lineTo(30, 25); ctx.arcTo(20, 25, 20, 35, 10); ctx.lineTo(20, 115); ctx.arcTo(20, 125, 30, 125, 10); ctx.lineTo(110, 125); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(320, 25); ctx.lineTo(420, 25); ctx.arcTo(430, 25, 430, 35, 10); ctx.lineTo(430, 115); ctx.arcTo(430, 125, 420, 125, 10); ctx.lineTo(340, 125); ctx.stroke();
-
-            ctx.fillStyle = '#ffffff'; ctx.font = '800 16px "Arial Black", Impact, sans-serif'; ctx.textAlign = 'center';
-            ctx.fillText('LAYANAN HARIAN', 225, 31);
-            ctx.fillStyle = '#ffde59'; ctx.font = '800 18px "Arial Black", Impact, sans-serif'; ctx.textAlign = 'center';
-            ctx.fillText('SEMUA KAMI KERJAKAN', 225, 131);
-
-            ctx.font = 'italic 900 58px "Arial Black", Impact, sans-serif';
-            ctx.textAlign = 'right'; ctx.fillStyle = '#ffde59'; ctx.fillText('TUTAH', 223, 90);
-            ctx.textAlign = 'left'; ctx.fillStyle = '#ffffff'; ctx.fillText('TITAH', 227, 90);
-
-            let y = 170;
-            ctx.fillStyle = '#111827'; ctx.font = '800 13px sans-serif'; ctx.textAlign = 'center';
-
-            const teksTagihan = 'STRUK TAGIHAN';
-            ctx.fillText(teksTagihan, 225, y);
-            const textWidth = ctx.measureText(teksTagihan).width;
-            ctx.beginPath(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#111827';
-            ctx.moveTo(225 - (textWidth / 2), y + 4); ctx.lineTo(225 + (textWidth / 2), y + 4); ctx.stroke();
-
-            y += 40;
-            ctx.textAlign = 'left'; ctx.font = '600 13px sans-serif'; ctx.fillStyle = '#4b5563';
-            ctx.fillText(`Pelanggan: ${order.customer_name || order.customer_wa.split('-')[0]}`, 20, y);
-            ctx.fillText(`Tanggal: ${new Date().toLocaleDateString('id-ID')}`, 250, y);
-            y += 20;
-            ctx.fillText(`Order ID: #${order.id}`, 20, y);
-            ctx.fillText(`Kurir: ${courier.full_name || '-'}`, 250, y);
-            y += 20;
-
-            ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(20, y); ctx.lineTo(430, y); ctx.stroke(); y += 25;
-
-            ctx.fillStyle = '#111827'; ctx.font = '700 14px sans-serif';
-            ctx.fillText(isBelanja ? 'Rincian Belanja:' : 'Rincian Layanan:', 20, y); y += 20;
-
-            if (isBelanja) {
-                ctx.font = '500 13px sans-serif';
-                parsedItems.forEach((itemObj) => {
-                    ctx.fillText(itemObj.name.length > 35 ? itemObj.name.substring(0, 35) + '...' : itemObj.name, 20, y);
-                    ctx.textAlign = 'right'; ctx.fillText(`Rp ${itemObj.priceText}`, 430, y); ctx.textAlign = 'left';
-                    y += itemHeight;
-                });
-            } else {
-                // LOGIKA BARU: CETAK TEBAL UNTUK LABEL OJEK/KIRIM BARANG
-                parsedItems.forEach((itemObj) => {
-                    const line = itemObj.name;
-                    const colonIdx = line.indexOf(':');
-                    if (colonIdx > -1) {
-                        const label = line.substring(0, colonIdx + 1);
-                        const val = line.substring(colonIdx + 1).trim();
-
-                        ctx.font = '700 13px sans-serif';
-                        ctx.fillStyle = '#6b7280'; // abu-abu
-                        ctx.fillText(label, 20, y);
-
-                        const labelWidth = ctx.measureText(label).width;
-
-                        ctx.font = '600 13px sans-serif';
-                        ctx.fillStyle = '#111827'; // hitam pekat
-                        ctx.fillText(val.length > 45 ? val.substring(0, 45) + '...' : val, 20 + labelWidth + 5, y);
-                    } else {
-                        ctx.font = '500 13px sans-serif';
-                        ctx.fillStyle = '#111827';
-                        ctx.fillText(line.length > 60 ? line.substring(0, 60) + '...' : line, 20, y);
-                    }
-                    y += itemHeight;
-                });
-            }
-
-            y += 10; ctx.beginPath(); ctx.moveTo(20, y); ctx.lineTo(430, y); ctx.stroke(); y += 25;
-
-            const subtotal = order.bill_details ? parseFloat(order.total_price || 0) : (isBelanja ? calculateJastipTotal(order.id, order.raw_order_text) : 0);
-            const ongkir = parseFloat(order.delivery_fee || 0);
-            const grandTotal = subtotal + ongkir;
-
-            ctx.font = '600 13px sans-serif';
-            ctx.fillStyle = '#111827';
-            if (isBelanja) {
-                ctx.fillText('Subtotal Belanja', 20, y); ctx.textAlign = 'right'; ctx.fillText(`Rp ${subtotal.toLocaleString('id-ID')}`, 430, y); ctx.textAlign = 'left'; y += 25;
-            }
-            ctx.fillText('Ongkos Jasa', 20, y); ctx.textAlign = 'right'; ctx.fillText(`Rp ${ongkir.toLocaleString('id-ID')}`, 430, y); ctx.textAlign = 'left'; y += 30;
-
-            ctx.font = '900 18px sans-serif'; ctx.fillStyle = '#004aad';
-            ctx.fillText('GRAND TOTAL', 20, y); ctx.textAlign = 'right'; ctx.fillText(`Rp ${grandTotal.toLocaleString('id-ID')}`, 430, y); ctx.textAlign = 'left';
-
-            y += 40;
-            ctx.fillStyle = '#f3f4f6'; ctx.fillRect(20, y, 410, 110);
-            y += 25;
-            ctx.fillStyle = '#111827'; ctx.font = '800 13px sans-serif'; ctx.textAlign = 'center';
-            ctx.fillText('METODE PEMBAYARAN (CASH / TRANSFER)', 225, y); y += 20;
-            ctx.font = '600 12px sans-serif'; ctx.fillStyle = '#004aad';
-
-            const pay1 = (courier.bank_name && courier.account_number) ? `${courier.bank_name}: ${courier.account_number}` : `Hubungi admin untuk rekening kurir`;
-            ctx.fillText(pay1, 225, y); y += 18;
-            if (courier.bank_name_2 && courier.account_number_2) {
-                const pay2 = `${courier.bank_name_2}: ${courier.account_number_2}`;
-                ctx.fillText(pay2, 225, y); y += 18;
-            }
-            ctx.fillText(`a/n ${courier.full_name || 'Kurir Tutah Titah'}`, 225, y);
-
-            y += 45;
-            ctx.fillStyle = '#111827'; ctx.font = '700 13px sans-serif';
-            ctx.fillText('Terima kasih telah menggunakan layanan TutahTitah. 🙏', 225, y);
-            y += 20;
-            ctx.font = '500 11px sans-serif'; ctx.fillStyle = '#4b5563';
-            ctx.fillText('WA: 087842344481 | IG: tutahtitah  |  FB: Tutahtitah  |  TikTok: @tutahtitah_', 225, y);
-
-            canvas.toBlob(blob => resolve(blob), 'image/png', 1.0);
-        });
+        const courier = couriersList.find(c => c.id === order.assigned_courier_id) || {};
+        return generateReceiptBlob(order, courier, jastipPrices);
     };
-
     const handleEditOngkirAdmin = (order) => {
         setEditOngkirModal({ isOpen: true, order: order, newOngkir: order.delivery_fee || '' });
     };
@@ -2220,74 +2053,24 @@ export default function App() {
 
     if (!user) {
         return (
-            <div className="bg-gray-50 min-h-screen flex items-center justify-center p-4 font-sans relative">
-                {/* PANGGUNG TOASTER UNTUK HALAMAN LOGIN */}
-                <Toaster position="top-center" toastOptions={{ duration: 3000, style: { background: '#333', color: '#fff', borderRadius: '10px' } }} />
-
-                {notif.message && (
-                    <div className={`fixed top-8 left-1/2 z-[100] w-[90%] max-w-sm px-4 py-3 rounded-2xl shadow-xl border backdrop-blur-xl bg-white/95 toast-animate flex items-center gap-3 ${notif.type === "error" ? "border-red-500" : "border-emerald-500"}`}>
-                        <div className={`flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full ${notif.type === "error" ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-600"}`}>
-                            <span className="text-xl">{notif.type === "error" ? "⚠️" : "✅"}</span>
-                        </div>
-                        <div className="flex flex-col">
-                            <span className={`text-[10px] uppercase font-bold tracking-widest ${notif.type === "error" ? "text-red-600" : "text-emerald-600"}`}>
-                                {notif.type === "error" ? "Pemberitahuan" : "Berhasil"}
-                            </span>
-                            <span className="text-sm font-semibold text-gray-800 leading-snug">
-                                {notif.message}
-                            </span>
-                        </div>
-                    </div>
-                )}
-
-                {needsInitialSetup && !isSetupMode && (
-                    <div className="absolute top-4 w-full flex justify-center z-40">
-                        <button onClick={() => setIsSetupMode(true)} className="bg-red-500 animate-pulse text-white px-6 py-2 rounded-full font-bold shadow-lg">
-                            ⚠️ Sistem Kosong! Klik di sini untuk membuat Akun Bos Admin Pertama
-                        </button>
-                    </div>
-                )}
-
-                {isSetupMode ? (
-                    <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md border border-red-200 text-left relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-2 bg-red-500"></div>
-                        <h2 className="text-2xl font-bold text-gray-800 mb-2">Setup Bos Admin</h2>
-                        <p className="text-xs text-gray-500 mb-6 font-medium">Ini hanya dilakukan 1x. Setelah Bos Admin dibuat, pendaftaran karyawan lain dilakukan di dalam Dashboard.</p>
-                        <form onSubmit={(e) => { e.preventDefault(); submitRegisterEmployee(true); }} className="space-y-4">
-                            <div><label className="text-[10px] font-bold text-gray-600 uppercase mb-1 block">Nama Lengkap</label><input type="text" required className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-red-500" value={hrForm.full_name} onChange={e => setHrForm({ ...hrForm, full_name: e.target.value })} /></div>
-                            <div><label className="text-[10px] font-bold text-gray-600 uppercase mb-1 block">Alamat Email (Untuk Login)</label><input type="email" required className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-red-500" value={hrForm.email} onChange={e => setHrForm({ ...hrForm, email: e.target.value })} /></div>
-                            <div><label className="text-[10px] font-bold text-gray-600 uppercase mb-1 block">PIN Rahasia (Minimal 6 Angka/Huruf)</label><input type="password" required minLength="6" className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-red-500" value={hrForm.pin} onChange={e => setHrForm({ ...hrForm, pin: e.target.value })} /></div>
-                            <div><label className="text-[10px] font-bold text-gray-600 uppercase mb-1 block">Nomor WhatsApp Aktif</label><input type="text" required className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm outline-none focus:border-red-500" value={hrForm.phone} onChange={e => setHrForm({ ...hrForm, phone: e.target.value })} /></div>
-                            <button type="submit" disabled={isSubmittingHr} className="w-full bg-red-500 hover:bg-red-600 text-white font-bold py-3.5 rounded-xl shadow-md transition disabled:opacity-50 mt-4">
-                                {isSubmittingHr ? 'Menyimpan ke Server...' : 'Buat Akun Bos Admin'}
-                            </button>
-                            <button type="button" onClick={() => setIsSetupMode(false)} className="w-full text-xs font-bold text-gray-500 mt-2 hover:text-gray-800">Batal</button>
-                        </form>
-                    </div>
-                ) : (
-                    <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-sm border border-gray-100 text-center relative overflow-hidden">
-                        <div className="w-28 h-28 mx-auto mb-6 bg-[#004aad] rounded-full flex items-center justify-center shadow-lg border-4 border-blue-50 overflow-hidden p-2">
-                            {/* <img src="/logo-tutahtitah-biru.webp" alt="Tutah Titah Logo" className="w-full h-full object-contain" /> */}
-                            <img
-                                src={isKurirApp ? "/kurir-tutahtitah.webp" : "/admin-tutahtitah.webp"}
-                                alt={isKurirApp ? "Logo Kurir Tutah" : "Logo Admin Tutah"}
-                                className="w-full h-full object-contain"
-                            />
-                        </div>
-                        <form onSubmit={handleLogin} className="space-y-4">
-                            <input type="email" placeholder="Alamat Email" required className="w-full text-center text-sm font-bold px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#004aad] transition" value={emailInput} onChange={(e) => setEmailInput(e.target.value)} disabled={isLoggingIn} />
-                            <input type="password" placeholder="PIN" required className="w-full text-center text-2xl tracking-[0.5em] font-bold px-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-[#004aad] transition shadow-inner" value={pinInput} onChange={(e) => setPinInput(e.target.value)} disabled={isLoggingIn} />
-                            <button type="submit" disabled={isLoggingIn} className="w-full bg-[#004aad] hover:bg-[#003b8a] text-white font-bold py-3.5 rounded-xl shadow-md transition transform hover:-translate-y-1 mt-2">{isLoggingIn ? 'Otentikasi...' : 'Login'}</button>
-                        </form>
-
-                        <button type="button" onClick={handleForgotPassword} className="w-full text-xs font-bold text-[#004aad] hover:underline mt-4 mb-4 text-center transition">
-                            🔑 Lupa PIN Login?
-                        </button>
-
-                        <h4 className="text-xs text-gray-500 mb-6 font-medium">Secured by Supabase Auth 🔒</h4>
-                    </div>
-                )}
-            </div>
+            <LoginPage
+                notif={notif}
+                needsInitialSetup={needsInitialSetup}
+                isSetupMode={isSetupMode}
+                setIsSetupMode={setIsSetupMode}
+                hrForm={hrForm}
+                setHrForm={setHrForm}
+                isSubmittingHr={isSubmittingHr}
+                submitRegisterEmployee={submitRegisterEmployee}
+                isKurirApp={isKurirApp}
+                handleLogin={handleLogin}
+                handleForgotPassword={handleForgotPassword}
+                emailInput={emailInput}
+                setEmailInput={setEmailInput}
+                pinInput={pinInput}
+                setPinInput={setPinInput}
+                isLoggingIn={isLoggingIn}
+            />
         );
     }
 
@@ -2329,21 +2112,7 @@ export default function App() {
                 }}
             />
             <style>{`@media print { body * { visibility: hidden; } #analytics-export-area, #analytics-export-area * { visibility: visible; } #analytics-export-area { position: absolute; left: 0; top: 0; width: 100%; padding: 20px; background: white; } .no-print { display: none !important; } .print-break { page-break-inside: avoid; } }`}</style>
-            {notif.message && (
-                <div className={`no-print fixed top-8 left-1/2 z-[100] w-[90%] max-w-sm px-4 py-3 rounded-2xl shadow-xl border backdrop-blur-xl bg-white/95 toast-animate flex items-center gap-3 ${notif.type === "error" ? "border-red-500" : "border-emerald-500"}`}>
-                    <div className={`flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full ${notif.type === "error" ? "bg-red-100 text-red-600" : "bg-emerald-100 text-emerald-600"}`}>
-                        <span className="text-xl">{notif.type === "error" ? "⚠️" : "✅"}</span>
-                    </div>
-                    <div className="flex flex-col">
-                        <span className={`text-[10px] uppercase font-bold tracking-widest ${notif.type === "error" ? "text-red-600" : "text-emerald-600"}`}>
-                            {notif.type === "error" ? "Pemberitahuan" : "Berhasil"}
-                        </span>
-                        <span className="text-sm font-semibold text-gray-800 leading-snug">
-                            {notif.message}
-                        </span>
-                    </div>
-                </div>
-            )}
+            <NotifToast notif={notif} className="no-print" />
 
             {/* TOP NAVIGATION */}
             {user?.role === 'courier' ? (
@@ -2410,33 +2179,7 @@ export default function App() {
                 {/* ===================================== */}
                 {user.role === "admin" && (
                     <div className="max-w-7xl mx-auto pb-20 md:pb-0">
-                        <div className="no-print fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 flex justify-around items-center md:relative md:justify-start md:border-t-0 md:border-b md:px-4 md:pt-2 md:gap-2 overflow-x-auto hide-scrollbar shadow-[0_-4px_15px_rgba(0,0,0,0.05)] md:shadow-none pb-2 pt-1 md:pb-0 md:pt-0">
-                            <button onClick={() => setAdminMainTab('operasional')} className={`flex flex-col md:flex-row items-center justify-center gap-1 py-1 md:px-4 md:py-3 font-bold text-[10px] md:text-sm w-full md:w-auto transition-all duration-300 md:border-b-2 whitespace-nowrap ${adminMainTab === 'operasional' ? 'text-[#004aad] md:border-[#004aad] -translate-y-1 md:translate-y-0' : 'text-gray-400 md:text-gray-500 md:border-transparent hover:text-gray-700 hover:bg-gray-50'}`}>
-                                <img src="/dekstop-icon.webp" className={`w-6 h-6 md:w-5 md:h-5 object-contain transition-all duration-300 ${adminMainTab === 'operasional' ? 'scale-110 drop-shadow-sm md:scale-100 md:drop-shadow-none' : 'grayscale opacity-60 scale-100'}`} alt="Live" />
-                                <span className="leading-none mt-1 md:mt-0 md:hidden">Live Orderan</span>
-                                <span className="hidden md:inline">Operasional (Live)</span>
-                            </button>
-                            <button onClick={() => setAdminMainTab('riwayat')} className={`flex flex-col md:flex-row items-center justify-center gap-1 py-1 md:px-4 md:py-3 font-bold text-[10px] md:text-sm w-full md:w-auto transition-all duration-300 md:border-b-2 whitespace-nowrap ${adminMainTab === 'riwayat' ? 'text-[#004aad] md:border-[#004aad] -translate-y-1 md:translate-y-0' : 'text-gray-400 md:text-gray-500 md:border-transparent hover:text-gray-700 hover:bg-gray-50'}`}>
-                                <img src="/clock-icon.webp" className={`w-6 h-6 md:w-5 md:h-5 object-contain transition-all duration-300 ${adminMainTab === 'riwayat' ? 'scale-110 drop-shadow-sm md:scale-100 md:drop-shadow-none' : 'grayscale opacity-60 scale-100'}`} alt="Riwayat" />
-                                <span className="leading-none mt-1 md:mt-0 md:hidden">Riwayat</span>
-                                <span className="hidden md:inline">Riwayat Order</span>
-                            </button>
-                            <button onClick={() => setAdminMainTab('laporan')} className={`flex flex-col md:flex-row items-center justify-center gap-1 py-1 md:px-4 md:py-3 font-bold text-[10px] md:text-sm w-full md:w-auto transition-all duration-300 md:border-b-2 whitespace-nowrap ${adminMainTab === 'laporan' ? 'text-[#004aad] md:border-[#004aad] -translate-y-1 md:translate-y-0' : 'text-gray-400 md:text-gray-500 md:border-transparent hover:text-gray-700 hover:bg-gray-50'}`}>
-                                <img src="/chart-icon.webp" className={`w-6 h-6 md:w-5 md:h-5 object-contain transition-all duration-300 ${adminMainTab === 'laporan' ? 'scale-110 drop-shadow-sm md:scale-100 md:drop-shadow-none' : 'grayscale opacity-60 scale-100'}`} alt="Analitik" />
-                                <span className="leading-none mt-1 md:mt-0 md:hidden">Analitik</span>
-                                <span className="hidden md:inline">Laporan & Analitik</span>
-                            </button>
-                            <button onClick={() => setAdminMainTab('tim')} className={`flex flex-col md:flex-row items-center justify-center gap-1 py-1 md:px-4 md:py-3 font-bold text-[10px] md:text-sm w-full md:w-auto transition-all duration-300 md:border-b-2 whitespace-nowrap ${adminMainTab === 'tim' ? 'text-[#004aad] md:border-[#004aad] -translate-y-1 md:translate-y-0' : 'text-gray-400 md:text-gray-500 md:border-transparent hover:text-gray-700 hover:bg-gray-50'}`}>
-                                <img src="/tim-icon.webp" className={`w-6 h-6 md:w-5 md:h-5 object-contain transition-all duration-300 ${adminMainTab === 'tim' ? 'scale-110 drop-shadow-sm md:scale-100 md:drop-shadow-none' : 'grayscale opacity-60 scale-100'}`} alt="Tim" />
-                                <span className="leading-none mt-1 md:mt-0 md:hidden">Tim</span>
-                                <span className="hidden md:inline">Manajemen Tim</span>
-                            </button>
-                            <button onClick={() => setAdminMainTab('portal')} className={`flex flex-col md:flex-row items-center justify-center gap-1 py-1 md:px-4 md:py-3 font-bold text-[10px] md:text-sm w-full md:w-auto transition-all duration-300 md:border-b-2 whitespace-nowrap ${adminMainTab === 'portal' ? 'text-[#004aad] md:border-[#004aad] -translate-y-1 md:translate-y-0' : 'text-gray-400 md:text-gray-500 md:border-transparent hover:text-gray-700 hover:bg-gray-50'}`}>
-                                <img src="/globe-icon.webp" className={`w-6 h-6 md:w-5 md:h-5 object-contain transition-all duration-300 ${adminMainTab === 'portal' ? 'scale-110 drop-shadow-sm md:scale-100 md:drop-shadow-none' : 'grayscale opacity-60 scale-100'}`} alt="Publik" />
-                                <span className="leading-none mt-1 md:mt-0 md:hidden">Publik</span>
-                                <span className="hidden md:inline">Manajemen Publik</span>
-                            </button>
-                        </div>
+                        <AdminNav adminMainTab={adminMainTab} setAdminMainTab={setAdminMainTab} />
 
                         <div className="p-4 sm:p-6">
 
@@ -3832,104 +3575,12 @@ export default function App() {
                         {/* ── LAYOUT CONTAINER: sidebar (lg) + content ── */}
                         <div className="md:flex md:flex-row md:min-h-screen">
 
-                            {/* ── SIDEBAR NAVIGATION (tablet: top tabs | desktop: left sidebar) ── */}
-                            <div className="no-print md:shrink-0">
-
-                                {/* Tablet: top horizontal tab bar */}
-                                <div className="hidden md:flex lg:hidden bg-white border-b border-gray-200 shadow-sm px-2 gap-1">
-                                    {[
-                                        { key: 'tugas', icon: '/dekstop-icon.webp', label: 'Live Orderan', badge: courierActiveOrders.length },
-                                        { key: 'riwayat', icon: '/clock-icon.webp', label: 'Riwayat Order' },
-                                        { key: 'analitik', icon: '/chart-icon.webp', label: 'Laporan Analitik' },
-                                        { key: 'pelanggaran', emoji: '🚩', label: 'Pelanggaran', badge: courierReports.filter(r => r.status === 'forwarded').length },
-                                        { key: 'profil', icon: '/avatar-icon.webp', label: 'Profil Kurir' },
-                                    ].map(({ key, icon, emoji, label, badge }) => (
-                                        <button key={key} onClick={() => setCourierMainTab(key)}
-                                            className={`relative flex items-center gap-2 px-4 py-3 font-bold text-sm border-b-2 transition whitespace-nowrap flex-1 justify-center ${courierMainTab === key
-                                                ? 'text-[#004aad] border-[#004aad] bg-blue-50/50'
-                                                : 'text-gray-500 border-transparent hover:text-gray-700 hover:bg-gray-50'
-                                                }`}>
-                                            {emoji ? (
-                                                <span className={`text-xl ${courierMainTab === key ? '' : 'grayscale opacity-50'}`}>{emoji}</span>
-                                            ) : (
-                                                <img src={icon} className={`w-5 h-5 object-contain ${courierMainTab === key ? '' : 'grayscale opacity-50'}`} alt={label} />
-                                            )}
-                                            <span>{label}</span>
-                                            {badge > 0 && (
-                                                <span className="bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow border border-white animate-pulse">{badge}</span>
-                                            )}
-                                        </button>
-                                    ))}
-                                </div>
-
-                                {/* Desktop: left vertical sidebar */}
-                                <div className="hidden lg:flex flex-col w-56 bg-white border-r border-gray-200 shadow-sm min-h-screen sticky top-0 pt-6">
-                                    <p className="text-[9px] font-bold uppercase tracking-widest text-gray-400 px-5 mb-3">Menu</p>
-                                    {[
-                                        { key: 'tugas', icon: '/dekstop-icon.webp', label: 'Live Orderan', badge: courierActiveOrders.length },
-                                        { key: 'riwayat', icon: '/clock-icon.webp', label: 'Riwayat Order' },
-                                        { key: 'analitik', icon: '/chart-icon.webp', label: 'Laporan Analitik' },
-                                        { key: 'pelanggaran', emoji: '🚩', label: 'Pelanggaran', badge: courierReports.filter(r => r.status === 'forwarded').length },
-                                        { key: 'profil', icon: '/avatar-icon.webp', label: 'Profil Kurir' },
-                                    ].map(({ key, icon, emoji, label, badge }) => (
-                                        <button key={key} onClick={() => setCourierMainTab(key)}
-                                            className={`relative flex items-center gap-3 mx-3 px-3 py-3 rounded-xl font-bold text-sm transition mb-1 ${courierMainTab === key
-                                                ? 'bg-blue-50/50 text-[#004aad] shadow-sm border border-blue-100'
-                                                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 border border-transparent'
-                                                }`}>
-                                            {emoji ? (
-                                                <span className={`text-xl ${courierMainTab === key ? '' : 'grayscale opacity-60'}`}>{emoji}</span>
-                                            ) : (
-                                                <img src={icon} className={`w-5 h-5 object-contain ${courierMainTab === key ? '' : 'grayscale opacity-60'}`} alt={label} />
-                                            )}
-                                            <span>{label}</span>
-                                            {badge > 0 && (
-                                                <span className="ml-auto bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow animate-pulse">{badge}</span>
-                                            )}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* ── BOTTOM NAV: mobile only ── */}
-                            <div className="no-print md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 flex justify-around items-end shadow-[0_-8px_24px_rgba(0,0,0,0.08)] pb-safe-area-inset-bottom">
-                                {/* LIVE ORDERAN - FAB Protruding */}
-                                <button onClick={() => setCourierMainTab('tugas')} className="relative flex flex-col items-center justify-end w-full flex-1 h-14 pb-2 transition group active:scale-95">
-                                    <div className={`absolute -top-4 w-14 h-14 rounded-full flex items-center justify-center border-4 transition-all duration-300 shadow-lg ${courierMainTab === 'tugas'
-                                        ? 'bg-white border-transparent scale-110 -translate-y-2 shadow-[0_4px_18px_rgba(0,74,173,0.35)]'
-                                        : 'bg-white border-gray-200 scale-100'
-                                        }`}>
-                                        <img src="/dekstop-icon.webp"
-                                            className={`w-8 h-8 object-contain transition-all duration-300 ${courierMainTab === 'tugas' ? 'opacity-100' : 'opacity-40 grayscale'
-                                                }`} alt="Orderan" />
-                                    </div>
-                                    {courierActiveOrders.length > 0 && (
-                                        <span className={`absolute top-0 right-1/4 translate-x-2 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-lg animate-pulse border-2 border-white z-10 transition-all duration-300 ${courierMainTab === 'tugas' ? '-translate-y-3' : '-translate-y-1'}`}>
-                                            {courierActiveOrders.length}
-                                        </span>
-                                    )}
-                                    <span className={`text-[10px] font-bold mt-1 whitespace-nowrap transition-colors ${courierMainTab === 'tugas' ? 'text-[#004aad]' : 'text-gray-400'}`}>Live Orderan</span>
-                                </button>
-
-                                {[{ key: 'riwayat', icon: '/clock-icon.webp', label: 'Riwayat' },
-                                { key: 'analitik', icon: '/chart-icon.webp', label: 'Analitik' },
-                                { key: 'pelanggaran', emoji: '🚩', label: 'Pelanggaran' },
-                                { key: 'profil', icon: '/avatar-icon.webp', label: 'Profil' }].map(({ key, icon, emoji, label }) => (
-                                    <button key={key} onClick={() => setCourierMainTab(key)}
-                                        className={`relative flex flex-col items-center justify-center gap-1 py-2 font-bold text-[10px] w-full flex-1 transition-all duration-300 active:scale-95 ${courierMainTab === key ? 'text-[#004aad] -translate-y-1' : 'text-gray-400'
-                                            }`}>
-                                        {emoji ? (
-                                            <span className={`text-2xl ${courierMainTab === key ? 'scale-110 drop-shadow-sm' : 'grayscale opacity-50 scale-100'}`}>{emoji}</span>
-                                        ) : (
-                                            <img src={icon} className={`w-6 h-6 object-contain transition-all duration-300 ${courierMainTab === key ? 'scale-110 drop-shadow-sm' : 'grayscale opacity-50 scale-100'}`} alt={label} />
-                                        )}
-                                        {key === 'pelanggaran' && courierReports.filter(r => r.status === 'forwarded').length > 0 && (
-                                            <span className="absolute top-1 right-1/4 translate-x-2 bg-red-500 w-2 h-2 rounded-full shadow-lg animate-pulse border-2 border-white z-10 transition-all duration-300"></span>
-                                        )}
-                                        <span className="leading-none whitespace-nowrap">{label}</span>
-                                    </button>
-                                ))}
-                            </div>
+                            <CourierNav
+                                courierMainTab={courierMainTab}
+                                setCourierMainTab={setCourierMainTab}
+                                activeOrdersCount={courierActiveOrders.length}
+                                forwardedReportsCount={courierReports.filter(r => r.status === 'forwarded').length}
+                            />
 
                             {/* ── MAIN CONTENT AREA ── */}
                             <div className="flex-1 min-w-0">
@@ -4656,224 +4307,12 @@ export default function App() {
 
                                 {/* TAB PROFIL */}
                                 {courierMainTab === 'profil' && (
-                                    <div className="pb-4">
-
-                                        {/* ── PROFILE HEADER (compact, branded) ── */}
-                                        <div className="relative md:hidden bg-[#004aad] px-4 pt-4 pb-0 overflow-hidden">
-                                            {/* Subtle decoration */}
-                                            <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
-                                            <div className="absolute bottom-0 left-8 w-20 h-20 rounded-full bg-[#ffde59]/10 translate-y-1/2 pointer-events-none"></div>
-
-                                            <div className="relative z-10 flex items-center gap-3 mb-3">
-                                                {/* Avatar */}
-                                                <div className="w-14 h-14 rounded-full bg-white flex items-center justify-center shadow-lg border-2 border-[#ffde59] shrink-0 overflow-hidden p-1.5">
-                                                    <img src="/kurir-tutahtitah.webp" alt="Avatar" className="w-full h-full object-contain" />
-                                                </div>
-                                                {/* Info */}
-                                                <div className="flex-1 min-w-0">
-                                                    <h2 className="text-base font-bold text-white leading-tight truncate">{user?.name}</h2>
-                                                    <p className="text-[10px] text-blue-200 font-medium truncate">{user?.email}</p>
-                                                    <span className="inline-block mt-1 bg-[#ffde59] text-[#004aad] text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Mitra Kurir</span>
-                                                </div>
-                                                {/* Edit button */}
-                                                {courierProfile && !isEditingCourierProfile && (
-                                                    <button onClick={handleEditCourierProfile} className="shrink-0 bg-white/15 hover:bg-white/25 border border-white/20 text-white text-[10px] font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1">
-                                                        ✏️ Edit
-                                                    </button>
-                                                )}
-                                            </div>
-
-                                            {/* Bottom tab bar shadow separator */}
-                                            <div className="h-3 bg-[#eef3fb] rounded-t-2xl -mx-4 relative z-10"></div>
-                                        </div>
-
-                                        {courierProfile ? (
-                                            <div className="px-4 space-y-2 mt-1 md:mt-4 md:px-6">
-
-                                                {/* ── DESKTOP PROFILE HEADER ── */}
-                                                <div className="hidden md:flex justify-between items-center bg-white p-4 rounded-2xl shadow-sm border border-gray-100 mb-4">
-                                                    <div>
-                                                        <h2 className="font-bold text-gray-900 text-lg">Pengaturan Profil</h2>
-                                                        <p className="text-xs text-gray-500">Kelola informasi pribadi dan rekening</p>
-                                                    </div>
-                                                    {courierProfile && !isEditingCourierProfile && (
-                                                        <button onClick={handleEditCourierProfile} className="bg-blue-50 text-[#004aad] text-xs font-bold px-4 py-2 rounded-xl border border-blue-100 hover:bg-blue-100 transition flex items-center gap-2">
-                                                            ✏️ Edit Profil
-                                                        </button>
-                                                    )}
-                                                </div>
-
-                                                {/* ── SECTION: INFO PRIBADI ── */}
-                                                <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
-                                                    <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b border-gray-50">
-                                                        <span className="text-[10px] font-bold uppercase tracking-widest text-[#004aad]">Informasi Pribadi</span>
-                                                    </div>
-
-                                                    {isEditingCourierProfile ? (
-                                                        <div className="px-4 py-3 space-y-2.5">
-                                                            <div>
-                                                                <label className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Nama Lengkap</label>
-                                                                <input type="text" className="w-full text-sm font-bold bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mt-1 outline-none focus:border-[#004aad] focus:bg-white transition" value={courierProfileForm.full_name} onChange={e => setCourierProfileForm({ ...courierProfileForm, full_name: e.target.value })} />
-                                                            </div>
-                                                            <div>
-                                                                <label className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Email Login</label>
-                                                                <input type="email" className="w-full text-sm font-bold bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mt-1 outline-none focus:border-[#004aad] focus:bg-white transition" value={courierProfileForm.email} onChange={e => setCourierProfileForm({ ...courierProfileForm, email: e.target.value })} />
-                                                            </div>
-                                                            <div>
-                                                                <label className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">Nomor WhatsApp</label>
-                                                                <input type="text" className="w-full text-sm font-bold bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mt-1 outline-none focus:border-[#004aad] focus:bg-white transition" value={courierProfileForm.phone} onChange={e => setCourierProfileForm({ ...courierProfileForm, phone: e.target.value })} />
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="divide-y divide-gray-50">
-                                                            <div className="flex justify-between items-center px-4 py-2.5">
-                                                                <span className="text-xs text-gray-400 font-medium w-24 shrink-0">Nama</span>
-                                                                <span className="text-xs font-bold text-gray-900 text-right truncate">{courierProfile.full_name || user?.name || '-'}</span>
-                                                            </div>
-                                                            <div className="flex justify-between items-center px-4 py-2.5">
-                                                                <span className="text-xs text-gray-400 font-medium w-24 shrink-0">Email</span>
-                                                                <span className="text-xs font-bold text-gray-900 text-right truncate">{courierProfile.email || '-'}</span>
-                                                            </div>
-                                                            <div className="flex justify-between items-center px-4 py-2.5">
-                                                                <span className="text-xs text-gray-400 font-medium w-24 shrink-0">WhatsApp</span>
-                                                                <span className="text-xs font-bold text-gray-900 text-right">{courierProfile.phone || '-'}</span>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* ── SECTION: REKENING / E-WALLET ── */}
-                                                <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
-                                                    <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b border-gray-50">
-                                                        <span className="text-[10px] font-bold uppercase tracking-widest text-[#004aad]">Rekening & E-Wallet</span>
-                                                    </div>
-
-                                                    {isEditingCourierProfile ? (
-                                                        <div className="px-4 py-3 space-y-2.5">
-                                                            <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider mb-1">Rekening Utama</p>
-                                                            <div className="grid grid-cols-2 gap-2">
-                                                                <div>
-                                                                    <label className="text-[9px] text-gray-400">Nama Bank / Dompet</label>
-                                                                    <input type="text" className="w-full text-xs font-bold bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2 mt-1 outline-none focus:border-[#004aad] focus:bg-white transition" value={courierProfileForm.bank_name} onChange={e => setCourierProfileForm({ ...courierProfileForm, bank_name: e.target.value })} placeholder="Contoh: BCA" />
-                                                                </div>
-                                                                <div>
-                                                                    <label className="text-[9px] text-gray-400">Nomor</label>
-                                                                    <input type="text" className="w-full text-xs font-bold bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2 mt-1 outline-none focus:border-[#004aad] focus:bg-white transition" value={courierProfileForm.account_number} onChange={e => setCourierProfileForm({ ...courierProfileForm, account_number: e.target.value })} placeholder="0812345678" />
-                                                                </div>
-                                                            </div>
-                                                            <p className="text-[9px] font-bold uppercase text-gray-400 tracking-wider mt-2 mb-1">Rekening Alternatif (Opsional)</p>
-                                                            <div className="grid grid-cols-2 gap-2">
-                                                                <div>
-                                                                    <label className="text-[9px] text-gray-400">Nama Bank / Dompet</label>
-                                                                    <input type="text" className="w-full text-xs font-bold bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2 mt-1 outline-none focus:border-[#004aad] focus:bg-white transition" value={courierProfileForm.bank_name_2} onChange={e => setCourierProfileForm({ ...courierProfileForm, bank_name_2: e.target.value })} placeholder="Contoh: OVO" />
-                                                                </div>
-                                                                <div>
-                                                                    <label className="text-[9px] text-gray-400">Nomor</label>
-                                                                    <input type="text" className="w-full text-xs font-bold bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-2 mt-1 outline-none focus:border-[#004aad] focus:bg-white transition" value={courierProfileForm.account_number_2} onChange={e => setCourierProfileForm({ ...courierProfileForm, account_number_2: e.target.value })} placeholder="0812345678" />
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="divide-y divide-gray-50">
-                                                            {/* Rekening Utama */}
-                                                            <div className="px-4 py-2.5 flex items-center justify-between gap-2">
-                                                                <div className="shrink-0">
-                                                                    <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Utama</p>
-                                                                </div>
-                                                                {(courierProfile.bank_name || courierProfile.account_number) ? (
-                                                                    <div className="text-right">
-                                                                        <p className="text-xs font-bold text-[#004aad] notranslate">{courierProfile.bank_name || '-'}</p>
-                                                                        <p className="text-[10px] font-mono text-gray-600 notranslate">{courierProfile.account_number || '-'}</p>
-                                                                    </div>
-                                                                ) : (
-                                                                    <span className="text-[10px] text-gray-300 italic">Belum diisi</span>
-                                                                )}
-                                                            </div>
-                                                            {/* Rekening Alternatif */}
-                                                            <div className="px-4 py-2.5 flex items-center justify-between gap-2">
-                                                                <div className="shrink-0">
-                                                                    <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Alternatif</p>
-                                                                </div>
-                                                                {(courierProfile.bank_name_2 || courierProfile.account_number_2) ? (
-                                                                    <div className="text-right">
-                                                                        <p className="text-xs font-bold text-[#004aad] notranslate">{courierProfile.bank_name_2 || '-'}</p>
-                                                                        <p className="text-[10px] font-mono text-gray-600 notranslate">{courierProfile.account_number_2 || '-'}</p>
-                                                                    </div>
-                                                                ) : (
-                                                                    <span className="text-[10px] text-gray-300 italic">Belum diisi</span>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* ── SECTION: KEAMANAN / PIN ── */}
-                                                <div className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100">
-                                                    <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b border-gray-50">
-                                                        <span className="text-[10px] font-bold uppercase tracking-widest text-[#004aad]">Keamanan</span>
-                                                    </div>
-
-                                                    {isEditingCourierProfile ? (
-                                                        <div className="px-4 py-3">
-                                                            <label className="text-[9px] font-bold uppercase text-gray-400 tracking-wider">PIN Login Baru</label>
-                                                            <input type="text" className="w-full text-sm font-mono font-bold bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 mt-1 outline-none focus:border-red-400 focus:bg-white transition tracking-widest" value={courierProfileForm.pin} onChange={e => setCourierProfileForm({ ...courierProfileForm, pin: e.target.value })} placeholder="Min. 6 karakter" />
-                                                        </div>
-                                                    ) : (
-                                                        <div className="px-4 py-2.5 flex items-center justify-between">
-                                                            <div>
-                                                                <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">PIN Login</p>
-                                                                <p className="text-sm font-mono font-bold text-gray-900 tracking-[0.3em] mt-0.5">{showCourierPin ? courierProfile.pin : '••••••'}</p>
-                                                            </div>
-                                                            <button onClick={() => setShowCourierPin(!showCourierPin)} className="text-[10px] font-bold text-[#004aad] bg-blue-50 hover:bg-blue-100 px-2.5 py-1.5 rounded-lg border border-blue-100 transition">
-                                                                {showCourierPin ? '🙈 Sembunyikan' : '👁️ Lihat'}
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
-
-                                                {/* ── EDIT MODE ACTION BUTTONS ── */}
-                                                {isEditingCourierProfile && (
-                                                    <div className="flex gap-2 pt-1">
-                                                        <button onClick={() => {
-                                                            setIsEditingCourierProfile(false);
-                                                            setCourierProfileForm({
-                                                                full_name: courierProfile.full_name || '',
-                                                                email: courierProfile.email || '',
-                                                                phone: courierProfile.phone || '',
-                                                                bank_name: courierProfile.bank_name || '',
-                                                                account_number: courierProfile.account_number || '',
-                                                                bank_name_2: courierProfile.bank_name_2 || '',
-                                                                account_number_2: courierProfile.account_number_2 || '',
-                                                                pin: courierProfile.pin || ''
-                                                            });
-                                                        }} className="flex-[0.8] bg-white text-gray-600 font-bold py-3 rounded-xl text-sm hover:bg-gray-50 transition border border-gray-200 shadow-sm">
-                                                            Batal
-                                                        </button>
-                                                        <button onClick={handleSaveCourierProfile} disabled={isSavingCourierProfile} className="flex-[1.2] bg-[#004aad] text-white font-bold py-3 rounded-xl shadow-md text-sm hover:bg-blue-800 transition disabled:opacity-60">
-                                                            {isSavingCourierProfile ? 'Menyimpan...' : '✓  Simpan Perubahan'}
-                                                        </button>
-                                                    </div>
-                                                )}
-
-                                                {/* ── LOGOUT ── */}
-                                                {!isEditingCourierProfile && (
-                                                    <div className="pt-1">
-                                                        <button onClick={handleLogout} className="w-full bg-white hover:bg-red-50 text-red-500 font-bold py-3 px-4 rounded-2xl border border-gray-100 shadow-sm transition flex items-center justify-between group">
-                                                            <div className="flex items-center gap-2.5">
-                                                                <span className="text-base">🚪</span>
-                                                                <span className="text-sm">Keluar Akun</span>
-                                                            </div>
-                                                            <span className="text-red-200 group-hover:text-red-400 transition text-xs font-bold">❯</span>
-                                                        </button>
-                                                    </div>
-                                                )}
-
-                                            </div>
-                                        ) : (
-                                            <div className="flex items-center justify-center p-10 text-gray-400 text-sm">Memuat profil...</div>
-                                        )}
-
-                                    </div>
+                                    <CourierProfilTab
+                                        user={user}
+                                        courierProfile={courierProfile}
+                                        onSave={saveCourierProfile}
+                                        handleLogout={handleLogout}
+                                    />
                                 )}
 
 
@@ -4896,66 +4335,11 @@ export default function App() {
             />
 
             {/* MODAL EDIT ONGKIR */}
-            {editOngkirModal.isOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                    <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm" onClick={() => setEditOngkirModal({ isOpen: false, order: null, newOngkir: '' })}></div>
-                    <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl relative z-10 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        {/* Header */}
-                        <div className="bg-gradient-to-r from-[#004aad] to-blue-600 px-5 py-4">
-                            <h3 className="text-white font-bold text-lg flex items-center gap-2">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 256 256"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"></path></svg>
-                                Edit Ongkir Kurir
-                            </h3>
-                        </div>
-                        
-                        {/* Body */}
-                        <div className="p-5">
-                            <div className="mb-5 bg-blue-50/50 p-4 rounded-xl border border-blue-100 flex items-center justify-between">
-                                <div>
-                                    <p className="text-xs text-gray-500 mb-0.5 uppercase font-bold tracking-wide">Ongkir Saat Ini</p>
-                                    <p className="text-lg font-black text-[#004aad]">
-                                        Rp {parseFloat(editOngkirModal.order?.delivery_fee || 0).toLocaleString('id-ID')}
-                                    </p>
-                                </div>
-                                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 256 256"><path d="M245.54,115.65,224,94.12V48a8,8,0,0,0-8-8H200V24a8,8,0,0,0-8-8H160a8,8,0,0,0-8,8V40H64V24a8,8,0,0,0-8-8H40a8,8,0,0,0-8,8V40H16a8,8,0,0,0,0,16H32V94.12L10.46,115.65a8,8,0,0,0,0,11.31l12,12A8,8,0,0,0,33.56,134a40,40,0,0,1,60.88,0,8,8,0,0,0,11.12,4.94l22.44-9.35,22.44,9.35a8,8,0,0,0,11.12-4.94,40,40,0,0,1,60.88,0,8,8,0,0,0,11.12-4.94l12-12A8,8,0,0,0,245.54,115.65ZM48,56H208V81.37L181.65,107.7a8,8,0,0,0,0,11.32A55.69,55.69,0,0,0,212.78,136c-11.89,6-25,10.6-40.42,4.19l-38.25-15.94a8,8,0,0,0-6.14,0l-38.29,16C74,146.68,60.89,142,49,136a55.69,55.69,0,0,0,31.13-17A8,8,0,0,0,80.12,107.7L48,81.37ZM184,232H72a8,8,0,0,1,0-16H184a8,8,0,0,1,0,16Z"></path></svg>
-                                </div>
-                            </div>
-                            
-                            <div className="mb-2">
-                                <label className="block text-[11px] font-bold text-gray-600 mb-2 uppercase tracking-wide">Masukkan Ongkir Baru</label>
-                                <div className="relative">
-                                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">Rp</span>
-                                    <input 
-                                        type="number" 
-                                        className="w-full bg-gray-50 border border-gray-200 text-gray-800 text-sm font-bold rounded-xl focus:ring-2 focus:ring-[#004aad] focus:border-[#004aad] block pl-10 pr-4 py-3.5 transition-all outline-none" 
-                                        placeholder="Contoh: 15000"
-                                        value={editOngkirModal.newOngkir}
-                                        onChange={(e) => setEditOngkirModal(p => ({ ...p, newOngkir: e.target.value }))}
-                                        autoFocus
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                        
-                        {/* Footer */}
-                        <div className="p-4 bg-gray-50 flex gap-3 border-t border-gray-100">
-                            <button 
-                                onClick={() => setEditOngkirModal({ isOpen: false, order: null, newOngkir: '' })}
-                                className="flex-1 px-4 py-3 rounded-xl text-gray-600 font-bold text-[13px] bg-white border border-gray-200 hover:bg-gray-50 hover:text-gray-900 transition-colors"
-                            >
-                                Batal
-                            </button>
-                            <button 
-                                onClick={submitEditOngkirAdmin}
-                                className="flex-1 px-4 py-3 rounded-xl text-white font-bold text-[13px] bg-[#004aad] hover:bg-blue-800 shadow-md hover:shadow-lg transition-all"
-                            >
-                                Simpan Ongkir
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <EditOngkirModal
+                editOngkirModal={editOngkirModal}
+                setEditOngkirModal={setEditOngkirModal}
+                onSubmit={submitEditOngkirAdmin}
+            />
 
             {/* MODAL EDIT ORDER */}
             <EditOrderModal
@@ -5034,32 +4418,7 @@ export default function App() {
 
 
             {/* LIGHTBOX UNTUK FOTO BELANJAAN MULTIPLE */}
-            {lightboxData.urls.length > 0 && (
-                <div onClick={() => setLightboxData({ urls: [], index: 0 })} className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4 backdrop-blur-sm cursor-zoom-out select-none">
-                    <button className="absolute top-6 right-6 text-white text-4xl hover:text-red-500 z-50 transition transform hover:scale-110">&times;</button>
-
-                    {lightboxData.urls.length > 1 && (
-                        <div className="absolute top-8 left-1/2 transform -translate-x-1/2 bg-black/60 text-white px-4 py-1.5 rounded-full text-sm font-bold z-50 tracking-widest border border-white/20">
-                            {lightboxData.index + 1} / {lightboxData.urls.length}
-                        </div>
-                    )}
-
-                    {lightboxData.urls.length > 1 && (
-                        <>
-                            <button onClick={(e) => { e.stopPropagation(); setLightboxData(prev => ({ ...prev, index: (prev.index - 1 + prev.urls.length) % prev.urls.length })); }} className="absolute left-2 sm:left-6 top-1/2 transform -translate-y-1/2 text-white bg-black/50 p-3 rounded-full text-2xl sm:text-4xl hover:bg-[#004aad] transition z-50 border border-white/20 hover:scale-110">
-                                ◀
-                            </button>
-                            <button onClick={(e) => { e.stopPropagation(); setLightboxData(prev => ({ ...prev, index: (prev.index + 1) % prev.urls.length })); }} className="absolute right-2 sm:right-6 top-1/2 transform -translate-y-1/2 text-white bg-black/50 p-3 rounded-full text-2xl sm:text-4xl hover:bg-[#004aad] transition z-50 border border-white/20 hover:scale-110">
-                                ▶
-                            </button>
-                        </>
-                    )}
-
-                    <img src={lightboxData.urls[lightboxData.index]} className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl relative z-40" alt="Lampiran" onClick={(e) => e.stopPropagation()} />
-
-                    <p className="absolute bottom-6 text-white/50 text-xs">Sentuh area hitam di luar gambar untuk menutup</p>
-                </div>
-            )}
+            <ImageLightbox lightboxData={lightboxData} setLightboxData={setLightboxData} />
         </div>
     );
 }
