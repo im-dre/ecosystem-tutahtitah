@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useMemo } from "react";
+﻿import React, { useState, useEffect, useMemo } from "react";
 // ✅ [TUGAS 1] Import Supabase dari npm (menggantikan CDN jsdelivr)
 import { supabase, createTempSupabaseClient } from "./lib/supabase";
 // ✅ [TUGAS 1] Import Firebase dari lib (menggantikan hardcoded config)
 import { db, GAS_API_URL } from "./lib/firebase";
 import { collection, getDoc, getDocs, doc, updateDoc, query, where } from "firebase/firestore";
-import { LineChart, Line, XAxis, YAxis, Tooltip as RechartsTooltip, ResponsiveContainer, CartesianGrid, BarChart, Bar, Cell, PieChart, Pie } from "recharts";
 import toast, { Toaster } from 'react-hot-toast';
 import Swal from 'sweetalert2';
 // ✅ [TUGAS 1] Import helper functions dari utils
@@ -18,7 +17,6 @@ import {
 import { generateReceiptBlob } from "./utils/receiptGenerator";
 // ✅ [TUGAS 1] Import komponen UI dari components/
 import ServiceBadge from "./components/ui/ServiceBadge";
-import SimpleTooltip from "./components/ui/SimpleTooltip";
 import CustomCourierSelect from "./components/ui/CustomCourierSelect";
 import NotifToast from "./components/ui/NotifToast";
 import ImageLightbox from "./components/ui/ImageLightbox";
@@ -36,6 +34,23 @@ import CourierNav from "./components/courier/CourierNav";
 import LoginPage from "./pages/LoginPage";
 // ✅ [LEVEL 2 #8] Tab Profil Kurir di-extract ke pages/courier/
 import CourierProfilTab from "./pages/courier/CourierProfilTab";
+// ✅ [LEVEL 2 #9] Tab Pelanggaran Kurir di-extract ke pages/courier/
+import CourierPelanggaranTab from "./pages/courier/CourierPelanggaranTab";
+// [LEVEL 3 #14] Tab Riwayat dan Analitik Kurir di-extract ke pages/courier/
+import CourierRiwayatTab from "./pages/courier/CourierRiwayatTab";
+import CourierAnalitikTab from "./pages/courier/CourierAnalitikTab";
+// [LEVEL 4 #16] Tab Tugas Aktif Kurir di-extract ke pages/courier/
+import CourierTugasAktifTab from "./pages/courier/CourierTugasAktifTab";
+// ✅ [LEVEL 2 #10] Tab Manajemen Tim/HRD Admin di-extract ke pages/admin/
+import AdminTimTab from "./pages/admin/AdminTimTab";
+// [LEVEL 3 #11] Tab Manajemen Publik (Portal UMKM & Testimoni) di-extract ke pages/admin/
+import AdminPortalTab from "./pages/admin/AdminPortalTab";
+// [LEVEL 3 #12] Tab Riwayat Admin di-extract ke pages/admin/
+import AdminRiwayatTab from "./pages/admin/AdminRiwayatTab";
+// [LEVEL 3 #13] Tab Laporan & Analitik Admin di-extract ke pages/admin/
+import AdminLaporanTab from "./pages/admin/AdminLaporanTab";
+// [LEVEL 4 #15] Tab Operasional Admin di-extract ke pages/admin/
+import AdminOperasionalTab from "./pages/admin/AdminOperasionalTab";
 
 const NOTIF_SOUND_URL = import.meta.env.VITE_NOTIF_SOUND_URL || "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3";
 
@@ -261,7 +276,7 @@ export default function App() {
 
                 toast.success(`Keputusan berhasil: ${actionLabel}`, { id: toastId });
                 fetchReportsData();
-                fetchPortalData();
+                // [LEVEL 3 #11] fetchPortalData() pindah ke AdminPortalTab (auto-refetch saat tab portal dibuka)
                 fetchData();
             } catch (error) {
                 console.error("Error resolving report:", error);
@@ -328,299 +343,6 @@ export default function App() {
         } catch (error) {
             console.error(error);
             toast.error("Gagal mengirim tanggapan", { id: toastId });
-        }
-    };
-
-    const fetchPortalData = async () => {
-        try {
-            console.log("🚀 [MULAI DETEKTIF] Menarik data Portal Publik...");
-
-            // ==========================================
-            // 1. TARIK DATA DARI SUPABASE (merchants & products)
-            // ==========================================
-            const { data: merchantsData, error: sbError } = await supabase
-                .from('merchants')
-                .select('*, products(*)');
-
-            if (sbError) {
-                console.error("Gagal menarik data dari Supabase:", sbError);
-                throw sbError;
-            }
-
-            const finalMergedData = (merchantsData || [])
-                .filter(m => ['PENDING', 'VERIFIED', 'SUSPENDED'].includes(m.status))
-                .map(m => {
-                    let hoursStr = "Belum diatur";
-                    if (Array.isArray(m.operating_hours)) {
-                        const openDays = m.operating_hours.filter(h => h.is_open);
-                        if (openDays.length > 0) {
-                            hoursStr = openDays.length === 7 ? "Buka Setiap Hari" : `${openDays.length} Hari Buka`;
-                            hoursStr += ` (${openDays[0].open} - ${openDays[0].close})`;
-                        } else if (m.operating_hours.length > 0) {
-                            hoursStr = "Tutup Sementara";
-                        }
-                    } else if (typeof m.operating_hours === 'string') {
-                        hoursStr = m.operating_hours;
-                    }
-
-                    return {
-                        id: m.id,
-                        nama_toko: m.name,
-                        deskripsi: m.description || "",
-                        alamat: m.address || "",
-                        logoUrl: m.logo_url || "",
-                        jam_operasional: hoursStr,
-                        status: m.status.toLowerCase(),
-                        produk: (m.products || []).map(p => ({
-                            id_produk: p.id,
-                            nama_produk: p.name,
-                            deskripsi: p.description || "",
-                            harga: p.price || 0,
-                            foto_url: p.image_url || "",
-                            kategori_produk: p.category || "",
-                            is_available: p.is_active !== false
-                        })),
-                        alasan_suspend: m.rejection_reason || null,
-                        alasan_penolakan: m.rejection_reason || null
-                    };
-                });
-
-            console.log("✅ [HASIL MERGE SUPABASE] Data akhir yang siap dirender:", finalMergedData);
-            setPortalUmkmData(finalMergedData);
-
-            // ==========================================
-            // 3. TARIK DATA TESTIMONI DARI GOOGLE SHEETS
-            // ==========================================
-            // Sebelum mulai nge-fetch GAS
-            setIsLoadingTestimoni(true);
-
-            try {
-                const gasResponse = await fetch(`${GAS_API_URL}?action=getPendingReviews`, {
-                    method: 'GET',
-                    headers: { 'Content-Type': 'text/plain;charset=utf-8' }
-                });
-                const gasResult = await gasResponse.json();
-
-                // Deteksi struktur kembalian GAS berdasarkan screenshot terbaru lo
-                if (gasResult && gasResult.testimoni) {
-                    // Langsung ambil properti testimoni dari dalam objek
-                    setPortalTestimoniData(gasResult.testimoni);
-                } else if (Array.isArray(gasResult)) {
-                    setPortalTestimoniData(gasResult);
-                } else if (gasResult.status === 'success') {
-                    setPortalTestimoniData(gasResult.data || []);
-                } else {
-                    console.error("Gagal menarik testimoni, format tidak dikenali:", gasResult);
-                }
-            } catch (gasErr) {
-                console.error("Error saat fetch API GAS:", gasErr);
-            } finally {
-                setIsLoadingTestimoni(false);
-            }
-
-        } catch (error) {
-            console.error("🚨 Error Utama di fetchPortalData:", error);
-        }
-    };
-
-    // Counter untuk Toko dan Produk yang sudah Live/Terverifikasi
-    const totalTokoLive = useMemo(() => {
-        return portalUmkmData.filter(item => item.status === 'verified' || item.status === 'published').length;
-    }, [portalUmkmData]);
-
-    const totalProdukLive = useMemo(() => {
-        let count = 0;
-        portalUmkmData.forEach(item => {
-            if ((item.status === 'verified' || item.status === 'published') && item.produk) {
-                count += item.produk.length;
-            }
-        });
-        return count;
-    }, [portalUmkmData]);
-
-    const handleReviewAction = async (reviewId, actionType) => {
-        // 1. Munculin notif loading (muter-muter)
-        const toastId = toast.loading('Memproses data ke Google Sheets...');
-
-        try {
-            const payload = {
-                action: 'updateReviewStatus',
-                review_id: reviewId,
-                status: actionType
-            };
-
-            const response = await fetch(GAS_API_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify(payload)
-            });
-
-            const result = await response.json();
-
-            if (result.status === 'success') {
-                // 2. Kalau sukses, ubah toast loading jadi centang ijo
-                toast.success(`Berhasil! Ulasan telah di-${actionType.toLowerCase()}.`, { id: toastId });
-                fetchPortalData();
-            } else {
-                // 3. Kalau gagal dari server
-                toast.error(`Gagal: ${result.message}`, { id: toastId });
-            }
-        } catch (error) {
-            console.error("Error jaringan saat update testimoni:", error);
-            // 4. Kalau error jaringan (misal wifi putus)
-            toast.error("Terjadi kesalahan jaringan.", { id: toastId });
-        }
-    };
-
-    const handleApproveUMKM = async (umkm) => {
-        const toastId = toast.loading(`Memproses persetujuan ${umkm.nama_toko}...`);
-        try {
-            const payload = {
-                action: 'approveUMKM',
-                data: umkm
-            };
-
-            const response = await fetch(GAS_API_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify(payload)
-            });
-
-            const result = await response.json();
-
-            if (result.status === 'success') {
-                const { data, error: sbError } = await supabase
-                    .from('merchants')
-                    .update({ status: 'VERIFIED', rejection_reason: null })
-                    .eq('id', umkm.id)
-                    .select();
-
-                if (sbError) throw sbError;
-                if (!data || data.length === 0) throw new Error("Gagal update. Diblokir oleh aturan RLS (Security) Supabase.");
-
-                toast.success(result.message, { id: toastId });
-                fetchPortalData();
-            } else {
-                toast.error(`Gagal: ${result.message}`, { id: toastId });
-            }
-        } catch (error) {
-            console.error("Error verifikasi UMKM:", error);
-            toast.error("Terjadi kesalahan jaringan.", { id: toastId });
-        }
-    };
-
-    const handleRejectUMKM = async (umkm) => {
-        // 1. Ganti prompt() purba dengan SweetAlert2 Input Modal yang Estetik
-        const { value: alasan, isConfirmed } = await Swal.fire({
-            title: 'Tolak Pengajuan Toko',
-            text: `Berikan alasan penolakan untuk ${umkm.nama_toko}:`,
-            input: 'textarea',
-            inputPlaceholder: 'Cth: Foto produk blur atau alamat kurang spesifik...',
-            inputValue: 'Data profil/produk belum lengkap atau foto tidak jelas.',
-            showCancelButton: true,
-            confirmButtonText: 'Ya, Tolak Toko',
-            cancelButtonText: 'Batal',
-            confirmButtonColor: '#ef4444', // Warna merah eksekusi
-            cancelButtonColor: '#6b7280',  // Warna abu-abu batal
-            inputValidator: (value) => {
-                if (!value.trim()) {
-                    return 'Alasan penolakan tidak boleh kosong, bro!';
-                }
-            }
-        });
-
-        // Jika admin klik 'Batal' atau nutup modal, hentikan fungsi
-        if (!isConfirmed) return;
-
-        // 2. Jalankan Toast Loading seperti biasa
-        const toastId = toast.loading(`Menolak pengajuan ${umkm.nama_toko}...`);
-
-        try {
-            // 3. Update status di Supabase
-            const { data, error: sbError } = await supabase
-                .from('merchants')
-                .update({ status: 'REJECTED', rejection_reason: alasan })
-                .eq('id', umkm.id)
-                .select();
-
-            if (sbError) throw sbError;
-            if (!data || data.length === 0) throw new Error("Gagal update. Diblokir oleh aturan RLS (Security) Supabase.");
-
-            toast.success("Pengajuan UMKM berhasil ditolak.", { id: toastId });
-            fetchPortalData(); // Refresh antrean di dashboard admin
-        } catch (error) {
-            console.error("Gagal menolak UMKM:", error);
-            toast.error("Terjadi kesalahan jaringan.", { id: toastId });
-        }
-    };
-
-    const handleSuspendUMKM = async (umkm) => {
-        const { value: alasan, isConfirmed } = await Swal.fire({
-            title: '⚠️ Suspend Toko (Bekukan)',
-            text: `Masukkan alasan kenapa toko ${umkm.nama_toko} di-suspend:`,
-            input: 'textarea',
-            inputPlaceholder: 'Cth: Foto produk fulgar, alamat fiktif...',
-            showCancelButton: true,
-            confirmButtonText: 'Ya, Suspend Toko',
-            cancelButtonText: 'Batal',
-            confirmButtonColor: '#dc2626',
-            cancelButtonColor: '#6b7280',
-            inputValidator: (value) => {
-                if (!value.trim()) return 'Alasan suspend wajib diisi, bro!';
-            }
-        });
-
-        if (!isConfirmed) return;
-
-        const toastId = toast.loading(`Mensupend ${umkm.nama_toko}...`);
-
-        try {
-            const { data, error: sbError } = await supabase
-                .from('merchants')
-                .update({ status: 'SUSPENDED', rejection_reason: alasan })
-                .eq('id', umkm.id)
-                .select();
-
-            if (sbError) throw sbError;
-            if (!data || data.length === 0) throw new Error("Gagal update. Diblokir oleh aturan RLS (Security) Supabase.");
-
-            toast.success(`Toko ${umkm.nama_toko} resmi dinonaktifkan.`, { id: toastId });
-            fetchPortalData();
-        } catch (error) {
-            toast.error("Gagal memproses suspend.", { id: toastId });
-        }
-    };
-
-    const handleUnsuspendUMKM = async (umkm) => {
-        const { isConfirmed } = await Swal.fire({
-            title: 'Pulihkan Toko?',
-            text: `Apakah Anda yakin ingin membuka suspend dan mengaktifkan kembali toko ${umkm.nama_toko}?`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Ya, Pulihkan Toko',
-            cancelButtonText: 'Batal',
-            confirmButtonColor: '#10b981',
-            cancelButtonColor: '#6b7280'
-        });
-
-        if (!isConfirmed) return;
-
-        const toastId = toast.loading(`Membuka suspend ${umkm.nama_toko}...`);
-
-        try {
-            const { data, error: sbError } = await supabase
-                .from('merchants')
-                .update({ status: 'VERIFIED', rejection_reason: null })
-                .eq('id', umkm.id)
-                .select();
-
-            if (sbError) throw sbError;
-            if (!data || data.length === 0) throw new Error("Gagal update. Diblokir oleh aturan RLS (Security) Supabase.");
-
-            toast.success(`Toko ${umkm.nama_toko} berhasil dipulihkan & live kembali!`, { id: toastId });
-            fetchPortalData();
-        } catch (error) {
-            toast.error("Gagal memproses pemulihan toko.", { id: toastId });
         }
     };
 
@@ -2185,1367 +1907,131 @@ export default function App() {
 
 
                             {/* TAB HRD / MANAJEMEN TIM KHUSUS ADMIN */}
+                            {/* ✅ [LEVEL 2 #10] Di-extract ke src/pages/admin/AdminTimTab.jsx */}
                             {adminMainTab === 'tim' && (
-                                <div className="space-y-6">
-                                    <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4">
-                                        <div>
-                                            <h2 className="text-xl font-bold text-gray-900 mb-1">Manajemen Karyawan (HRD)</h2>
-                                            <p className="text-[10px] sm:text-xs text-gray-500 font-medium">Hanya Admin yang dapat menambahkan anggota baru. Akses publik ditutup.</p>
-                                        </div>
-                                        <button onClick={() => { setHrForm({ id: null, role: 'courier', full_name: '', email: '', phone: '', pin: '', bank_name: '', account_number: '', bank_name_2: '', account_number_2: '' }); setIsHrModalOpen(true); }} className="w-full md:w-auto bg-[#004aad] hover:bg-[#003b8a] text-white px-6 py-3 rounded-xl font-bold shadow-md transition flex items-center justify-center gap-2 text-xs sm:text-sm">
-                                            ➕ Daftarkan Anggota
-                                        </button>
-                                    </div>
-
-                                    {/* BLOK PENCARIAN KARYAWAN */}
-                                    <div className="relative w-full">
-                                        <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400">🔍</span>
-                                        <input
-                                            type="text"
-                                            placeholder="Cari Nama Anggota / Karyawan..."
-                                            className="w-full bg-white border border-gray-200 text-gray-800 text-sm rounded-xl pl-11 pr-4 py-3.5 font-medium outline-none focus:border-[#004aad] shadow-sm"
-                                            value={hrSearch}
-                                            onChange={(e) => setHrSearch(e.target.value)}
-                                        />
-                                    </div>
-
-                                    {/* LOGIKA GROUPING & SORTING KARYAWAN */}
-                                    {(() => {
-                                        const searched = allEmployees.filter(emp => (emp.full_name || '').toLowerCase().includes(hrSearch.toLowerCase()));
-
-                                        // 1. KELOMPOK AKTIF (Admin di atas, lalu sesuai abjad)
-                                        const activeList = searched.filter(emp => !(emp.pin && emp.pin.startsWith('BANNED_'))).sort((a, b) => {
-                                            if (a.role === 'admin' && b.role !== 'admin') return -1;
-                                            if (a.role !== 'admin' && b.role === 'admin') return 1;
-                                            return (a.full_name || '').localeCompare(b.full_name || '');
-                                        });
-
-                                        // 2. KELOMPOK NONAKTIF (Sesuai abjad)
-                                        const inactiveList = searched.filter(emp => emp.pin && emp.pin.startsWith('BANNED_')).sort((a, b) => {
-                                            return (a.full_name || '').localeCompare(b.full_name || '');
-                                        });
-
-                                        // Komponen UI Kartu (Biar kodingan nggak diulang-ulang)
-                                        const EmployeeCard = ({ emp }) => (
-                                            <div key={emp.id} className="bg-white rounded-2xl border border-gray-200 shadow-sm p-3 sm:p-5 relative overflow-hidden flex flex-col h-full">
-                                                <div className="flex flex-col sm:flex-row sm:justify-between items-start mb-2 sm:mb-3 border-b border-gray-100 pb-2 gap-1.5">
-                                                    <span className={`text-[8px] sm:text-[9px] font-bold px-1.5 sm:px-2.5 py-1 rounded uppercase tracking-wider w-max ${emp.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-green-100 text-green-700'}`}>
-                                                        {emp.role === 'admin' ? '👑 Admin' : '🛵 Kurir'}
-                                                    </span>
-                                                    {emp.pin && emp.pin.startsWith('BANNED_') ? (
-                                                        <span className="text-[8px] sm:text-[9px] font-bold text-gray-500 bg-gray-100 px-1.5 sm:px-2 py-1 rounded w-max">NONAKTIF</span>
-                                                    ) : emp.auth_id ? (
-                                                        <span className="text-[8px] sm:text-[9px] font-bold text-green-700 bg-green-50 px-1.5 sm:px-2 py-1 rounded border border-green-100 w-max">Verified</span>
-                                                    ) : (
-                                                        <span className="text-[8px] sm:text-[9px] font-bold text-red-700 bg-red-50 px-1.5 sm:px-2 py-1 rounded border border-red-100 w-max">No Auth</span>
-                                                    )}
-                                                </div>
-
-                                                <div className="mb-3 flex-grow">
-                                                    <h3 className="font-bold text-gray-900 text-sm sm:text-lg leading-tight line-clamp-2">{emp.full_name}</h3>
-                                                    <p className="text-[8px] sm:text-[9px] text-gray-400 font-bold mb-2 mt-0.5">🗓️ Join: {emp.created_at ? new Date(emp.created_at).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'}</p>
-
-                                                    {emp.role === 'courier' && (
-                                                        <div className="flex items-center gap-1.5 mb-2 bg-yellow-50/50 w-max px-2 py-1 rounded border border-yellow-100">
-                                                            <span className="text-yellow-400 text-xs">⭐</span>
-                                                            <span className="text-[10px] font-bold text-gray-700">{courierRatingStats[emp.id]?.average || '0.0'}</span>
-                                                            <span className="text-[9px] text-gray-400">({courierRatingStats[emp.id]?.count || 0})</span>
-                                                        </div>
-                                                    )}
-
-                                                    <div className="flex flex-col gap-0.5 mt-2">
-                                                        <p className="text-[9px] sm:text-xs text-gray-600 font-medium flex items-center gap-1.5"><span className="text-gray-400">📱</span> <span className="truncate">{emp.phone || '-'}</span></p>
-                                                        <p className="text-[9px] sm:text-xs text-gray-600 font-medium flex items-center gap-1.5"><span className="text-gray-400">📧</span> <span className="truncate">{emp.email || '-'}</span></p>
-                                                    </div>
-                                                </div>
-
-                                                <div className="bg-gray-50 p-2 sm:p-3 rounded-xl border border-gray-100 mb-3">
-                                                    <p className="text-[8px] sm:text-[10px] font-bold text-gray-500 uppercase mb-1 border-b border-gray-200 pb-1">Rekening</p>
-                                                    <p className="text-[8px] sm:text-[10px] font-mono text-gray-700 truncate"><span className="font-bold text-gray-500">B1:</span> {emp.bank_name ? `${emp.bank_name}-${emp.account_number}` : '-'}</p>
-                                                    <p className="text-[8px] sm:text-[10px] font-mono text-gray-700 truncate mt-0.5"><span className="font-bold text-gray-500">B2:</span> {emp.bank_name_2 ? `${emp.bank_name_2}-${emp.account_number_2}` : '-'}</p>
-                                                </div>
-
-                                                <div className="flex flex-col sm:flex-row gap-1.5 sm:gap-2 mt-auto pt-2 border-t border-gray-100">
-                                                    <button onClick={() => openEditEmployee(emp)} className="flex-1 bg-blue-50 text-[#004aad] hover:bg-blue-100 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-bold transition flex items-center justify-center gap-1 border border-blue-100">
-                                                        ✏️ Edit
-                                                    </button>
-                                                    {emp.pin && emp.pin.startsWith('BANNED_') ? (
-                                                        <button onClick={() => handleRestoreEmployee(emp.id, emp.full_name)} className="flex-1 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-bold transition flex items-center justify-center gap-1 border border-emerald-100">
-                                                            ✅ Aktifkan
-                                                        </button>
-                                                    ) : (
-                                                        <button onClick={() => handleDeleteEmployee(emp.id, emp.full_name)} className="flex-1 bg-red-50 text-red-600 hover:bg-red-100 py-2 sm:py-2.5 rounded-lg sm:rounded-xl text-[10px] sm:text-xs font-bold transition flex items-center justify-center gap-1 border border-red-100">
-                                                            🚫 Nonaktif
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-
-                                        return (
-                                            <div className="space-y-6">
-                                                {searched.length === 0 && (
-                                                    <div className="p-8 text-center bg-white rounded-2xl border border-gray-200 shadow-sm">
-                                                        <span className="text-4xl block mb-2 opacity-50">🔍</span>
-                                                        <p className="font-bold text-gray-500">Tidak ada anggota yang cocok dengan pencarian.</p>
-                                                    </div>
-                                                )}
-
-                                                {/* SECTION ANGGOTA AKTIF */}
-                                                {activeList.length > 0 && (
-                                                    <div>
-                                                        <div className="flex items-center gap-2 mb-3 px-1">
-                                                            <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                                            <h3 className="font-bold text-gray-800 text-sm">Anggota Aktif ({activeList.length})</h3>
-                                                        </div>
-                                                        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
-                                                            {activeList.map(emp => <EmployeeCard key={emp.id} emp={emp} />)}
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* SECTION ANGGOTA NONAKTIF (BANNED) */}
-                                                {inactiveList.length > 0 && (
-                                                    <div className="pt-4 border-t border-gray-200 border-dashed">
-                                                        <div className="flex items-center gap-2 mb-3 px-1">
-                                                            <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                                                            <h3 className="font-bold text-gray-800 text-sm">Anggota Dinonaktifkan ({inactiveList.length})</h3>
-                                                        </div>
-                                                        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 opacity-75">
-                                                            {inactiveList.map(emp => <EmployeeCard key={emp.id} emp={emp} />)}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
+                                <AdminTimTab
+                                    allEmployees={allEmployees}
+                                    hrSearch={hrSearch}
+                                    setHrSearch={setHrSearch}
+                                    courierRatingStats={courierRatingStats}
+                                    onAddEmployee={() => { setHrForm({ id: null, role: 'courier', full_name: '', email: '', phone: '', pin: '', bank_name: '', account_number: '', bank_name_2: '', account_number_2: '' }); setIsHrModalOpen(true); }}
+                                    onEditEmployee={openEditEmployee}
+                                    onDeleteEmployee={handleDeleteEmployee}
+                                    onRestoreEmployee={handleRestoreEmployee}
+                                />
                             )}
 
                             {/* ====================================================== */}
                             {/* TAB PORTAL PUBLIK (UMKM & TESTIMONI) KHUSUS ADMIN */}
                             {/* ====================================================== */}
+                            {/* [LEVEL 3 #11] Di-extract ke src/pages/admin/AdminPortalTab.jsx */}
                             {adminMainTab === 'portal' && (
-                                <div className="space-y-6">
-
-                                    {/* 🌟 FIX UI: Sub-Tab dibikin Scrollable (Bisa digeser) di layar HP 🌟 */}
-                                    <div className="flex gap-2 p-1.5 bg-gray-200 rounded-xl w-full overflow-x-auto hide-scrollbar mb-6">
-
-                                        <button onClick={fetchPortalData} className="flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm text-[#004aad] bg-blue-50 hover:bg-blue-100 transition border border-blue-200 ml-1">
-                                            🔄 Refresh
-                                        </button>
-
-                                        {/* 1. Toko Terverifikasi */}
-                                        <button onClick={() => setPortalTab('terverifikasi')} className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm transition ${portalTab === 'terverifikasi' ? 'bg-blue-200 text-blue-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
-                                            ✅ Toko Terverifikasi ({totalTokoLive})
-                                        </button>
-
-                                        {/* 2. Verifikasi UMKM Baru */}
-                                        <button onClick={() => setPortalTab('umkm')} className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm transition ${portalTab === 'umkm' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
-                                            🏪 Verifikasi UMKM ({portalUmkmData.filter(x => x.status && x.status.toLowerCase() === 'pending').length})
-                                        </button>
-
-                                        {/* 3. BARU: TOKO DI-SUSPEND */}
-                                        <button onClick={() => setPortalTab('suspended')} className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm transition ${portalTab === 'suspended' ? 'bg-red-500 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
-                                            🚫 Toko Di-Suspend ({portalUmkmData.filter(x => x.status && x.status.toLowerCase() === 'suspended').length})
-                                        </button>
-
-                                                                                                                        {/* 4. Testimoni */}
-                                        <button onClick={() => setPortalTab('testimoni')} className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm transition ${portalTab === 'testimoni' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
-                                            💬 Verifikasi Testimoni ({portalTestimoniData.length})
-                                        </button>
-
-                                        {/* 5. Pengaduan */}
-                                        <button onClick={() => setPortalTab('pengaduan')} className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm transition ${portalTab === 'pengaduan' ? 'bg-red-50 text-red-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
-                                            🚩 Pusat Pengaduan
-                                        </button>
-
-                                    </div>
-
-                                    {isPortalLoading ? (
-                                        <div className="p-10 text-center text-gray-500 font-bold animate-pulse">Memuat data publik...</div>
-                                    ) : (
-                                        <>
-                                            {/* ========================================== */}
-                                            {/* SUB-TAB: DAFTAR TOKO YANG SUDAH LIVE       */}
-                                            {/* ========================================== */}
-                                            {portalTab === 'terverifikasi' && (
-                                                <div className="space-y-6 animate-fadeIn">
-
-                                                    {/* Ringkasan Statistik */}
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                        <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-center gap-4">
-                                                            <div className="p-3 bg-blue-500 text-white rounded-lg text-2xl">🏪</div>
-                                                            <div>
-                                                                <p className="text-sm text-gray-500 font-medium">Total Toko Live</p>
-                                                                <h4 className="text-2xl font-bold text-gray-800">{totalTokoLive} Toko</h4>
-                                                            </div>
-                                                        </div>
-                                                        <div className="bg-green-50 border border-green-200 p-4 rounded-xl flex items-center gap-4">
-                                                            <div className="p-3 bg-green-500 text-white rounded-lg text-2xl">📦</div>
-                                                            <div>
-                                                                <p className="text-sm text-gray-500 font-medium">Total Produk Katalog</p>
-                                                                <h4 className="text-2xl font-bold text-gray-800">{totalProdukLive} Produk</h4>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* List Toko Aktif */}
-                                                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden shadow-sm">
-                                                        <div className="p-4 bg-gray-50 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                                                            <h3 className="font-bold text-gray-800 text-sm sm:text-base">Daftar Mitra UMKM & Katalog Produk Aktif</h3>
-
-                                                            {/* 🌟 INPUT SEARCH NAMA TOKO 🌟 */}
-                                                            <div className="relative w-full sm:w-64">
-                                                                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs">🔍</span>
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Cari Nama Toko..."
-                                                                    className="w-full bg-white border border-gray-200 text-gray-800 text-xs rounded-xl pl-8 pr-3 py-2 font-medium outline-none focus:border-[#004aad] shadow-sm transition"
-                                                                    value={searchVerifiedToko}
-                                                                    onChange={(e) => setSearchVerifiedToko(e.target.value)}
-                                                                />
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="divide-y divide-gray-200">
-                                                            {portalUmkmData
-                                                                .filter(item => item.status === 'verified' || item.status === 'published')
-                                                                .filter(item => (item.nama_toko || '').toLowerCase().includes(searchVerifiedToko.toLowerCase()))
-                                                                .length === 0 ? (
-                                                                <div className="p-8 text-center text-gray-400 font-medium text-xs sm:text-sm">
-                                                                    {searchVerifiedToko ? `Toko dengan kata kunci "${searchVerifiedToko}" tidak ditemukan.` : 'Belum ada toko yang terverifikasi bro.'}
-                                                                </div>
-                                                            ) : (
-                                                                portalUmkmData
-                                                                    .filter(item => item.status === 'verified' || item.status === 'published')
-                                                                    .filter(item => (item.nama_toko || '').toLowerCase().includes(searchVerifiedToko.toLowerCase()))
-                                                                    .map((umkm) => (
-                                                                        <div key={umkm.id} className="p-4 sm:p-6 hover:bg-gray-50/50 transition">
-
-                                                                            {/* Info Utama Toko */}
-                                                                            <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4 pb-4 border-b border-dashed border-gray-200">
-                                                                                <div className="flex items-start gap-3 sm:gap-4">
-                                                                                    <img src={umkm.logoUrl || 'https://placehold.co/100'} className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border shadow-sm shrink-0" alt="Logo Toko" />
-                                                                                    <div>
-                                                                                        <h4 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">{umkm.nama_toko}</h4>
-                                                                                        <span className="inline-block px-2.5 py-0.5 bg-green-100 text-green-800 text-[10px] sm:text-xs font-semibold rounded-full mb-1">🟢 Live di Google Sheets</span>
-                                                                                        <p className="text-xs sm:text-sm text-gray-600 mt-1">📍 Alamat: {umkm.alamat || '-'} | 🕒 Jam Ops: {umkm.jam_operasional || '-'}</p>
-                                                                                    </div>
-                                                                                </div>
-
-                                                                                {/* Tombol Suspend Toko */}
-                                                                                <button
-                                                                                    onClick={() => handleSuspendUMKM(umkm)}
-                                                                                    className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-bold border border-red-200 transition-colors flex items-center gap-1.5 self-start lg:self-center shrink-0 shadow-sm"
-                                                                                >
-                                                                                    🚫 Suspend Toko
-                                                                                </button>
-                                                                            </div>
-
-                                                                            {/* LIST PRODUK (ACCORDION) */}
-                                                                            <div className="mt-3 sm:mt-4">
-                                                                                <button
-                                                                                    onClick={() => toggleStoreProducts(umkm.id)}
-                                                                                    className="w-full flex items-center justify-between bg-gray-50 hover:bg-blue-50 p-2.5 sm:p-3 rounded-xl border border-gray-200 transition-colors focus:outline-none"
-                                                                                >
-                                                                                    <p className="text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                                                                        📦 Produk Toko ({umkm.produk ? umkm.produk.length : 0})
-                                                                                    </p>
-                                                                                    <span className={`text-[10px] font-bold px-2 py-1 rounded-md transition-colors ${expandedStores[umkm.id] ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'}`}>
-                                                                                        {expandedStores[umkm.id] ? '▲ Sembunyikan' : '▼ Tampilkan'}
-                                                                                    </span>
-                                                                                </button>
-
-                                                                                {expandedStores[umkm.id] && (
-                                                                                    <div className="mt-3 p-3 bg-gray-50/50 rounded-xl border border-gray-100 animate-fadeIn">
-                                                                                        {umkm.produk && umkm.produk.length > 0 ? (
-                                                                                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                                                                                                {umkm.produk.map((prod, idx) => (
-                                                                                                    <div key={idx} className="flex gap-3 bg-white border border-gray-200 p-2 rounded-lg items-center shadow-sm hover:border-blue-300 transition">
-                                                                                                        <img src={prod.foto_url || 'https://placehold.co/80'} className="w-12 h-12 rounded-md object-cover border shrink-0" alt="Produk" />
-                                                                                                        <div className="min-w-0 flex-1">
-                                                                                                            <h5 className="text-xs sm:text-sm font-bold text-gray-800 truncate">{prod.nama_produk}</h5>
-                                                                                                            <p className="text-xs text-[#004aad] font-semibold notranslate">Rp {Number(prod.harga).toLocaleString('id-ID')}</p>
-                                                                                                        </div>
-                                                                                                    </div>
-                                                                                                ))}
-                                                                                            </div>
-                                                                                        ) : (
-                                                                                            <p className="text-xs text-gray-400 italic text-center py-4">Toko ini belum menambahkan produk.</p>
-                                                                                        )}
-                                                                                    </div>
-                                                                                )}
-                                                                            </div>
-
-                                                                        </div>
-                                                                    ))
-                                                            )}
-                                                        </div>
-                                                    </div>
-
-                                                </div>
-                                            )}
-
-                                            {/* ========================================== */}
-                                            {/* SUB-TAB: DAFTAR TOKO YANG DI-SUSPEND       */}
-                                            {/* ========================================== */}
-                                            {portalTab === 'suspended' && (
-                                                <div className="mt-6 animate-fadeIn">
-                                                    <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                                        🚫 Daftar Toko Yang Sedang Di-Suspend
-                                                    </h2>
-
-                                                    {portalUmkmData.filter(umkm => umkm.status && umkm.status.toLowerCase() === 'suspended').length === 0 ? (
-                                                        <div className="p-12 text-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                                                            <span className="text-4xl block mb-2">🎉</span>
-                                                            <h3 className="text-lg font-bold text-gray-700">Tidak ada toko yang di-suspend</h3>
-                                                            <p className="text-gray-500 text-sm mt-1">Semua mitra UMKM berjalan normal dan tertib.</p>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                            {portalUmkmData
-                                                                .filter(umkm => umkm.status && umkm.status.toLowerCase() === 'suspended')
-                                                                .map((umkm) => (
-                                                                    <div key={umkm.id} className="p-5 border border-red-200 rounded-xl shadow-sm bg-red-50/20 flex flex-col justify-between">
-                                                                        <div>
-                                                                            <div className="flex items-start gap-4 mb-3">
-                                                                                <img src={umkm.logoUrl || 'https://placehold.co/100'} className="w-14 h-14 rounded-xl object-cover border shadow-sm shrink-0" alt="Logo Toko" />
-                                                                                <div>
-                                                                                    <h4 className="text-lg font-bold text-gray-900">{umkm.nama_toko}</h4>
-                                                                                    <p className="text-xs text-gray-500">{umkm.nama_pemilik} • {umkm.alamat || 'Alamat -'}</p>
-                                                                                    <span className="inline-block mt-1 px-2.5 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full uppercase">
-                                                                                        🚫 Status: Di-Suspend
-                                                                                    </span>
-                                                                                </div>
-                                                                            </div>
-
-                                                                            {/* Alasan Suspend */}
-                                                                            <div className="bg-red-50 p-3 rounded-lg border border-red-200 mb-3 text-xs shadow-inner">
-                                                                                <p className="font-bold text-red-900 mb-0.5">⚠️ Alasan Suspend dari Admin:</p>
-                                                                                <p className="text-red-800 italic">"{umkm.alasan_suspend || 'Tidak dicantumkan'}"</p>
-                                                                            </div>
-
-                                                                            {/* Blok Jika Penjual Mengajukan Banding */}
-                                                                            {umkm.alasan_banding && (
-                                                                                <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 mb-3 text-xs shadow-inner">
-                                                                                    <p className="font-bold text-blue-900 mb-0.5">📩 Pengajuan Banding dari Penjual:</p>
-                                                                                    <p className="text-blue-800 italic">"{umkm.alasan_banding}"</p>
-
-                                                                                    {/* ======================================= */}
-                                                                                    {/* 🌟 ENGINE PENDETEKSI PERUBAHAN DATA 🌟 */}
-                                                                                    {/* ======================================= */}
-                                                                                    {umkm.snapshot_suspend && (
-                                                                                        <div className="mt-4 pt-3 border-t border-blue-200">
-                                                                                            <p className="font-bold text-gray-800 mb-2 flex items-center gap-1">🔄 Hasil Revisi Data:</p>
-                                                                                            <div className="space-y-2">
-                                                                                                {(() => {
-                                                                                                    const snap = umkm.snapshot_suspend;
-                                                                                                    const changes = [];
-
-                                                                                                    // 1. Cek Data Toko
-                                                                                                    if (snap.nama_toko !== umkm.nama_toko) changes.push({ type: 'text', label: 'Nama Toko', old: snap.nama_toko, new: umkm.nama_toko });
-                                                                                                    if (snap.deskripsi !== umkm.deskripsi) changes.push({ type: 'text', label: 'Deskripsi Toko', old: snap.deskripsi, new: umkm.deskripsi });
-                                                                                                    if (snap.logoUrl !== umkm.logoUrl) changes.push({ type: 'image', label: 'Logo Toko', old: snap.logoUrl, new: umkm.logoUrl });
-
-                                                                                                    // 2. Cek Data Produk
-                                                                                                    umkm.produk?.forEach(newProd => {
-                                                                                                        const oldProd = snap.produk?.find(p => p.id_produk === newProd.id_produk);
-                                                                                                        if (!oldProd) {
-                                                                                                            changes.push({ type: 'text', label: `[PRODUK BARU] ${newProd.nama_produk}`, old: '-', new: 'Ditambahkan' });
-                                                                                                        } else {
-                                                                                                            if (oldProd.foto_url !== newProd.foto_url) changes.push({ type: 'image', label: `Foto Produk: ${newProd.nama_produk}`, old: oldProd.foto_url, new: newProd.foto_url });
-                                                                                                            if (oldProd.nama_produk !== newProd.nama_produk) changes.push({ type: 'text', label: `Nama Produk`, old: oldProd.nama_produk, new: newProd.nama_produk });
-                                                                                                            if (oldProd.deskripsi !== newProd.deskripsi) changes.push({ type: 'text', label: `Deskripsi: ${newProd.nama_produk}`, old: oldProd.deskripsi, new: newProd.deskripsi });
-                                                                                                        }
-                                                                                                    });
-
-                                                                                                    if (changes.length === 0) return <p className="text-[10px] text-gray-500 bg-white p-2 rounded border border-gray-100 italic">Tidak ada perubahan data yang terdeteksi.</p>;
-
-                                                                                                    return changes.map((c, i) => (
-                                                                                                        <div key={i} className="bg-white p-2 rounded-lg border border-gray-200 shadow-sm text-[10px]">
-                                                                                                            <span className="font-bold text-gray-700 block mb-1.5">{c.label}</span>
-                                                                                                            {c.type === 'text' ? (
-                                                                                                                <div className="flex items-center gap-2">
-                                                                                                                    <span className="text-red-500 line-through truncate w-1/2 p-1.5 bg-red-50 rounded border border-red-100">{c.old || '-'}</span>
-                                                                                                                    <span>➔</span>
-                                                                                                                    <span className="text-green-700 font-bold truncate w-1/2 p-1.5 bg-green-50 rounded border border-green-200 shadow-sm">{c.new || '-'}</span>
-                                                                                                                </div>
-                                                                                                            ) : (
-                                                                                                                <div className="flex items-center gap-3">
-                                                                                                                    <div className="relative">
-                                                                                                                        <span className="absolute -top-2 -left-2 bg-red-100 text-red-600 text-[8px] font-bold px-1 rounded shadow-sm">LAMA</span>
-                                                                                                                        <img src={c.old || 'https://placehold.co/50'} className="w-12 h-12 object-cover rounded-lg border-2 border-red-200 opacity-60" />
-                                                                                                                    </div>
-                                                                                                                    <span className="text-lg">➔</span>
-                                                                                                                    <div className="relative">
-                                                                                                                        <span className="absolute -top-2 -right-2 bg-green-100 text-green-700 text-[8px] font-bold px-1 rounded shadow-sm z-10">BARU</span>
-                                                                                                                        <img src={c.new || 'https://placehold.co/50'} className="w-16 h-16 object-cover rounded-xl border-2 border-green-400 shadow-md" />
-                                                                                                                    </div>
-                                                                                                                </div>
-                                                                                                            )}
-                                                                                                        </div>
-                                                                                                    ));
-                                                                                                })()}
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-
-                                                                        {/* Tombol Pulihkan Toko */}
-                                                                        <button
-                                                                            onClick={() => handleUnsuspendUMKM(umkm)}
-                                                                            className="w-full mt-4 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition shadow-md flex items-center justify-center gap-2"
-                                                                        >
-                                                                            ✅ Pulihkan Toko (Buka Suspend & Live Kembali)
-                                                                        </button>
-                                                                    </div>
-                                                                ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {/* ========================================== */}
-                                            {/* SUB-TAB UMKM (VERIFIKASI PENDAFTARAN TOKO) */}
-                                            {/* ========================================== */}
-                                            {portalTab === 'umkm' && (
-                                                <div className="mt-6">
-                                                    <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                                        🏪 Daftar Antrean Verifikasi UMKM Baru
-                                                    </h2>
-
-                                                    {/* 1. FILTER KHUSUS STATUS PENDING UNTUK CEK KOSONG */}
-                                                    {portalUmkmData.filter(umkm => umkm.status && umkm.status.toLowerCase() === 'pending').length === 0 ? (
-
-                                                        // TAMPILAN JIKA TIDAK ADA UMKM PENDING
-                                                        <div className="p-12 text-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                                                            <span className="text-4xl block mb-2">🎉</span>
-                                                            <h3 className="text-lg font-bold text-gray-700">Tidak ada pengajuan UMKM baru</h3>
-                                                            <p className="text-gray-500 text-sm mt-1">Semua pendaftaran mitra UMKM sudah diverifikasi.</p>
-                                                        </div>
-
-                                                    ) : (
-
-                                                        // TAMPILAN CARD UMKM (FILTER KHUSUS STATUS PENDING SAJA)
-                                                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                                                            {portalUmkmData
-                                                                .filter(umkm => umkm.status && umkm.status.toLowerCase() === 'pending')
-                                                                .map((umkm, index) => (
-                                                                    <div key={umkm.id || index} className="p-5 border border-gray-200 rounded-xl shadow-sm bg-white flex flex-col h-full">
-
-                                                                        {/* Header Toko: Logo & Info Utama */}
-                                                                        <div className="flex gap-4 items-start mb-4">
-                                                                            <div className="w-16 h-16 rounded-lg bg-gray-100 border overflow-hidden flex-shrink-0">
-                                                                                {umkm.logoUrl ? (
-                                                                                    <img src={umkm.logoUrl} alt="Logo Toko" className="w-full h-full object-cover" />
-                                                                                ) : (
-                                                                                    <span className="flex items-center justify-center w-full h-full text-2xl">🏪</span>
-                                                                                )}
-                                                                            </div>
-                                                                            <div>
-                                                                                <h3 className="font-bold text-xl text-gray-800 leading-tight">{umkm.nama_toko}</h3>
-                                                                                <p className="text-sm text-gray-500 font-medium">{umkm.nama_pemilik} • {Array.isArray(umkm.kategori) ? umkm.kategori.join(', ') : (umkm.kategori || 'Kategori tidak ada')}</p>
-                                                                                <div className="flex items-center gap-2 mt-1">
-                                                                                    <span className="bg-yellow-100 text-yellow-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase">
-                                                                                        Status: {umkm.status}
-                                                                                    </span>
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-
-                                                                        {/* Detail Toko */}
-                                                                        <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 mb-4">
-                                                                            <p className="text-sm text-gray-700 mb-1 flex items-start gap-2">
-                                                                                <span>📍</span> <span>{umkm.alamat || <span className="italic text-red-400">Belum diisi</span>}</span>
-                                                                            </p>
-                                                                            <p className="text-sm text-gray-700 mb-1 flex items-start gap-2">
-                                                                                <span>🕒</span> <span>{umkm.jam_operasional || '-'}</span>
-                                                                            </p>
-                                                                            <p className="text-sm text-gray-600 italic mt-2 border-t pt-2 border-blue-100">
-                                                                                "{umkm.deskripsi || <span className="text-red-400">Deskripsi kosong</span>}"
-                                                                            </p>
-                                                                        </div>
-
-                                                                        {/* SEKSI ETALASE PRODUK */}
-                                                                        <div className="mb-6 flex-1">
-                                                                            <h4 className="font-bold text-gray-700 text-sm mb-3 flex items-center gap-2">
-                                                                                📦 Etalase Produk ({umkm.produk ? umkm.produk.length : 0})
-                                                                            </h4>
-
-                                                                            {umkm.produk && umkm.produk.length > 0 ? (
-                                                                                <div className="flex flex-col gap-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                                                                                    {umkm.produk.map((prod, pIdx) => (
-                                                                                        <div key={prod.id_produk || pIdx} className="flex gap-3 bg-white border rounded-lg p-2 hover:bg-gray-50 transition">
-                                                                                            <div className="w-16 h-16 rounded-md bg-gray-200 overflow-hidden flex-shrink-0">
-                                                                                                {prod.foto_url ? (
-                                                                                                    <img src={prod.foto_url} alt={prod.nama_produk} className="w-full h-full object-cover" />
-                                                                                                ) : (
-                                                                                                    <span className="flex items-center justify-center w-full h-full text-gray-400 text-xs">No Pic</span>
-                                                                                                )}
-                                                                                            </div>
-                                                                                            <div className="flex-1">
-                                                                                                <div className="flex justify-between items-start">
-                                                                                                    <p className="font-bold text-sm text-gray-800 line-clamp-1">{prod.nama_produk}</p>
-                                                                                                    <span className="text-xs font-bold text-green-600 bg-green-50 px-1.5 py-0.5 rounded notranslate">
-                                                                                                        Rp {parseInt(prod.harga).toLocaleString('id-ID')}
-                                                                                                    </span>
-                                                                                                </div>
-                                                                                                <p className="text-[11px] text-gray-500 line-clamp-2 mt-0.5">{prod.deskripsi}</p>
-                                                                                                <div className="flex gap-2 mt-1.5">
-                                                                                                    <span className="text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
-                                                                                                        {prod.kategori_produk || 'Umum'}
-                                                                                                    </span>
-                                                                                                    <span className={`text-[10px] px-1.5 py-0.5 rounded ${prod.is_available !== false ? 'bg-blue-50 text-blue-600' : 'bg-red-50 text-red-600'}`}>
-                                                                                                        {prod.is_available !== false ? 'Tersedia' : 'Habis'}
-                                                                                                    </span>
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    ))}
-                                                                                </div>
-                                                                            ) : (
-                                                                                <div className="bg-red-50 text-red-500 text-xs p-3 rounded-lg border border-red-100 text-center">
-                                                                                    Mitra ini belum menambahkan satupun produk ke etalase.
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-
-                                                                        {/* Tombol Aksi */}
-                                                                        <div className="flex gap-3 mt-auto pt-4 border-t">
-                                                                            <button
-                                                                                onClick={() => handleApproveUMKM(umkm)}
-                                                                                className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-colors"
-                                                                            >
-                                                                                ✅ Setujui & Publish
-                                                                            </button>
-
-                                                                            <button
-                                                                                onClick={() => handleRejectUMKM(umkm)}
-                                                                                className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2.5 px-4 rounded-lg text-sm transition-colors"
-                                                                            >
-                                                                                🗑️ Tolak
-                                                                            </button>
-                                                                        </div>
-
-                                                                    </div>
-                                                                ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {/* ========================================== */}
-                                            {/* SUB-TAB TESTIMONI (VERIFIKASI ULASAN)        */}
-                                            {/* ========================================== */}
-                                            {portalTab === 'testimoni' && (
-                                                <div className="mt-6">
-                                                    <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                                        💬 Daftar Antrean Verifikasi Testimoni
-                                                    </h2>
-
-                                                    {/* LOGIKA CONDITIONAL RENDERING MULAI DI SINI */}
-                                                    {isLoadingTestimoni ? (
-
-                                                        // 1. TAMPILAN SAAT LOADING (NUNGGU BALASAN GOOGLE SHEETS)
-                                                        <div className="flex flex-col items-center justify-center py-16 space-y-4 bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                                                            <svg
-                                                                className="w-10 h-10 text-blue-600 animate-spin"
-                                                                xmlns="http://www.w3.org/2000/svg"
-                                                                fill="none"
-                                                                viewBox="0 0 24 24"
-                                                            >
-                                                                <circle
-                                                                    className="opacity-25"
-                                                                    cx="12"
-                                                                    cy="12"
-                                                                    r="10"
-                                                                    stroke="currentColor"
-                                                                    strokeWidth="4"
-                                                                ></circle>
-                                                                <path
-                                                                    className="opacity-75"
-                                                                    fill="currentColor"
-                                                                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                                                ></path>
-                                                            </svg>
-                                                            <p className="text-gray-500 font-medium animate-pulse">
-                                                                Mengambil data ulasan dari Google Sheets...
-                                                            </p>
-                                                        </div>
-
-                                                    ) : portalTestimoniData.length === 0 ? (
-
-                                                        // 2. TAMPILAN JIKA LOADING SELESAI TAPI DATA KOSONG
-                                                        <div className="p-12 text-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                                                            <span className="text-4xl block mb-2">🎉</span>
-                                                            <h3 className="text-lg font-bold text-gray-700">Tidak ada pengajuan testimoni baru</h3>
-                                                            <p className="text-gray-500 text-sm mt-1">Semua ulasan sudah diverifikasi atau belum ada yang masuk.</p>
-                                                        </div>
-
-                                                    ) : (
-
-                                                        // 3. TAMPILAN JIKA DATA BERHASIL DITARIK (MUNCULIN CARD TESTIMONI)
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                            {portalTestimoniData.map((rev, index) => (
-                                                                <div key={rev.ID_Ulasan || index} className="p-5 border border-gray-200 rounded-xl shadow-sm bg-white hover:shadow-md transition-shadow">
-
-                                                                    {/* Header Card: Nama & Bintang */}
-                                                                    <div className="flex justify-between items-start mb-3">
-                                                                        <div>
-                                                                            <h3 className="font-bold text-lg text-gray-800">{rev.Nama}</h3>
-                                                                            <p className="text-xs text-gray-500 flex items-center gap-1">
-                                                                                📍 {rev.Alamat || 'Tidak ada alamat'}
-                                                                            </p>
-                                                                        </div>
-                                                                        <div className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full font-bold text-sm flex items-center gap-1">
-                                                                            ⭐ {rev.Bintang}/5
-                                                                        </div>
-                                                                    </div>
-
-                                                                    {/* Isi Pesan Testimoni */}
-                                                                    <div className="bg-gray-50 p-3 rounded-lg mb-4 text-sm text-gray-700 italic border-l-4 border-blue-400">
-                                                                        "{rev.Pesan}"
-                                                                    </div>
-
-                                                                    {/* Tombol Aksi */}
-                                                                    <div className="flex gap-3 mt-auto">
-                                                                        <button
-                                                                            onClick={() => handleReviewAction(rev.ID_Ulasan, 'Published')}
-                                                                            className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-colors"
-                                                                        >
-                                                                            ✅ Setujui & Publish
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={() => handleReviewAction(rev.ID_Ulasan, 'Rejected')}
-                                                                            className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2.5 px-4 rounded-lg text-sm transition-colors"
-                                                                        >
-                                                                            🗑️ Tolak (Hapus)
-                                                                        </button>
-                                                                    </div>
-
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
+                                <AdminPortalTab
+                                    supabase={supabase}
+                                    portalTab={portalTab}
+                                    setPortalTab={setPortalTab}
+                                    searchVerifiedToko={searchVerifiedToko}
+                                    setSearchVerifiedToko={setSearchVerifiedToko}
+                                    isPortalLoading={isPortalLoading}
+                                    portalUmkmData={portalUmkmData}
+                                    setPortalUmkmData={setPortalUmkmData}
+                                    portalTestimoniData={portalTestimoniData}
+                                    setPortalTestimoniData={setPortalTestimoniData}
+                                    isLoadingTestimoni={isLoadingTestimoni}
+                                    setIsLoadingTestimoni={setIsLoadingTestimoni}
+                                    expandedStores={expandedStores}
+                                    toggleStoreProducts={toggleStoreProducts}
+                                />
                             )}
 
                             {/* TAB OPERASIONAL ADMIN */}
                             {adminMainTab === 'operasional' && (
-                                <div className="space-y-6">
-                                    {/* QUICK ACTIONS & TOGGLES HEADER */}
-                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-gray-200 shadow-sm">
-                                        {/* Copy Formats */}
-                                        <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
-                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-1 shrink-0">Copy Format:</span>
-                                            <button onClick={() => copyFormat('ojek')} className="shrink-0 bg-yellow-50 text-yellow-700 font-bold text-[10px] px-3 py-1.5 rounded-full border border-yellow-200 hover:bg-yellow-100 transition">🛵 Ojek</button>
-                                            <button onClick={() => copyFormat('kirim')} className="shrink-0 bg-emerald-50 text-emerald-700 font-bold text-[10px] px-3 py-1.5 rounded-full border border-emerald-200 hover:bg-emerald-100 transition">📦 Kurir</button>
-                                            <button onClick={() => copyFormat('jastip')} className="shrink-0 bg-blue-50 text-[#004aad] font-bold text-[10px] px-3 py-1.5 rounded-full border border-blue-200 hover:bg-blue-100 transition">🛒 Jastip</button>
-                                        </div>
-
-                                        {/* Layanan Custom Order Toggle */}
-                                        <div className="flex items-center gap-3 shrink-0 pl-1 sm:pl-3 sm:border-l border-gray-100">
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] font-bold text-gray-800">Custom Order</span>
-                                                <span className={`text-[9px] font-medium ${isCustomOrderOpen ? 'text-green-600' : 'text-red-500'}`}>{isCustomOrderOpen ? 'Buka' : 'Tutup'}</span>
-                                            </div>
-                                            <button
-                                                onClick={handleToggleCustomOrder}
-                                                disabled={isTogglingCustomOrder || !customOrderMerchantId}
-                                                className={`relative shrink-0 w-11 h-6 rounded-full transition-all duration-300 shadow-inner focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed ${isCustomOrderOpen ? 'bg-green-500' : 'bg-gray-300'}`}
-                                            >
-                                                <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-md transition-all duration-300 ${isCustomOrderOpen ? 'left-[22px]' : 'left-0.5'}`}></div>
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* SEGMENTED CONTROL: PENDING vs PROCESSING */}
-                                    <div className="flex p-1 bg-gray-100 rounded-xl w-full sm:w-[350px] border border-gray-200/60 shadow-inner">
-                                        <button onClick={() => setAdminOperasionalTab('pending')} className={`flex-1 flex justify-center items-center gap-1.5 px-2 py-2 rounded-lg font-bold text-xs sm:text-sm transition-all duration-300 ${adminOperasionalTab === 'pending' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'}`}>
-                                            <span className="relative">
-                                                Masuk
-                                                {adminPendingOrders.length > 0 && (
-                                                    <span className="absolute -top-1 -right-2 flex h-2 w-2">
-                                                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                                                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
-                                                    </span>
-                                                )}
-                                            </span>
-                                            <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-md text-[10px] ml-1">{adminPendingOrders.length}</span>
-                                        </button>
-                                        <button onClick={() => setAdminOperasionalTab('processing')} className={`flex-1 flex justify-center items-center gap-1.5 px-2 py-2 rounded-lg font-bold text-xs sm:text-sm transition-all duration-300 ${adminOperasionalTab === 'processing' ? 'bg-white text-gray-900 shadow-sm ring-1 ring-black/5' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-200/50'}`}>
-                                            Sedang Jalan
-                                            <span className="bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-md text-[10px] ml-1">{adminProcessingOrders.length}</span>
-                                        </button>
-                                    </div>
-
-                                    {/* SUB-TAB MASUK (PENDING) */}
-                                    {adminOperasionalTab === 'pending' && (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                            {adminPendingOrders.map(o => (
-                                                <div key={o.id} className="bg-white p-5 rounded-2xl border border-gray-200 flex flex-col h-full shadow-sm hover:shadow-md transition relative">
-                                                    <div className="absolute top-0 right-0 w-16 h-16 bg-[#004aad] opacity-5 rounded-bl-full pointer-events-none"></div>
-                                                    <div className="flex justify-between items-start mb-3">
-                                                        <ServiceBadge type={o.tipe_layanan} />
-                                                        <span className="text-[10px] font-bold text-gray-400">{formatDateTime(o.created_at)}</span>
-                                                    </div>
-                                                    <p className="font-bold text-gray-900 text-lg mb-1">{o.customer_name || o.customer_wa.split('-')[0]}</p>
-                                                    <div className="flex justify-between items-center mb-3">
-                                                        <p className="text-[10px] font-bold text-gray-500">{o.customer_wa}</p>
-                                                        <a href={getWaLink(o.customer_wa)} target="_blank" rel="noreferrer" className="bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366] hover:text-white px-2 py-1 rounded text-[10px] font-bold transition shadow-sm border border-[#25D366]/30 flex items-center gap-1">
-                                                            💬 Hubungi
-                                                        </a>
-                                                    </div>
-                                                    <p className="text-[10px] text-gray-500 mb-3 font-medium flex items-start gap-1">📍 <span>{o.customer_address}</span></p>
-
-                                                    {o.image_url && (
-                                                        <button onClick={() => setLightboxImg(o.image_url)} className="mb-3 w-full bg-blue-50 text-[#004aad] text-[10px] font-bold py-1.5 rounded-lg border border-blue-200 hover:bg-blue-100 flex items-center justify-center gap-1">
-                                                            📸 Lihat Lampiran Foto
-                                                        </button>
-                                                    )}
-
-                                                    <div className="bg-gray-50 p-3 rounded-xl text-xs font-mono text-gray-700 border border-gray-100 mb-4 flex-grow whitespace-pre-wrap">{o.raw_order_text}</div>
-
-                                                    <div className="mt-auto space-y-2 pt-3 border-t border-gray-100">
-                                                        <p className="text-[10px] font-bold text-gray-500 uppercase">Input Ongkir & Tugaskan</p>
-                                                        <input type="number" placeholder="Nominal Ongkos Jasa (Rp)" className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-bold text-gray-700 outline-none focus:border-[#004aad]" value={dispatchInputs[`${o.id}_fee`] || ""} onChange={(e) => setDispatchInputs({ ...dispatchInputs, [`${o.id}_fee`]: e.target.value })} />
-                                                        <CustomCourierSelect
-                                                            value={dispatchInputs[`${o.id}_courier`] || ""}
-                                                            onChange={(val) => setDispatchInputs({ ...dispatchInputs, [`${o.id}_courier`]: val })}
-                                                            placeholder="-- Pilih Kurir yang Jalan --"
-                                                            couriersList={couriersList}
-                                                            activeCourierCounts={activeCourierCounts}
-                                                            courierRatingStats={courierRatingStats}
-                                                        />
-
-                                                        <div className="flex gap-2 mt-2">
-                                                            <button onClick={() => cancelPendingOrder(o.id)} className="flex-[0.8] bg-[#FF0000] hover:bg-red-500 text-white font-bold py-3 rounded-lg text-xs border border-red-200 hover:bg-red-50 transition shadow-sm">Batal</button>
-                                                            <button onClick={() => handleDispatch(o.id)} className="flex-[1.2] bg-[#004aad] hover:bg-[#003b8a] text-white py-3 rounded-lg text-sm font-bold shadow-md transition">Lanjut Proses 🚀</button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                            {adminPendingOrders.length === 0 && <div className="col-span-full p-10 text-center bg-white rounded-2xl border border-gray-200 shadow-sm"><span className="text-4xl block mb-2 opacity-50">☕</span><span className="font-bold text-gray-500">Belum ada orderan baru.</span></div>}
-                                        </div>
-                                    )}
-
-                                    {/* SUB-TAB SEDANG JALAN (PROCESSING / HOLD / WAITING / DELIVERING) */}
-                                    {adminOperasionalTab === 'processing' && (
-                                        <div className="flex flex-col gap-4">
-                                            {/* Sub-Tabs Nav Admin */}
-                                            <div className="flex overflow-x-auto hide-scrollbar gap-5 px-4 md:px-0 border-b border-gray-200">
-                                                {['Semua', 'Diproses', 'Menuju Lokasi', 'Kendala', 'Nyerah'].map(sub => (
-                                                    <button key={sub} onClick={() => setAdminOperasionalSubTab(sub)}
-                                                        className={`whitespace-nowrap pb-2.5 text-[11px] uppercase tracking-wide font-bold transition-all border-b-[3px] ${adminOperasionalSubTab === sub ? 'text-[#004aad] border-[#004aad]' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
-                                                        {sub}
-                                                    </button>
-                                                ))}
-                                            </div>
-
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 md:gap-4 -mx-4 md:mx-0">
-                                                {adminProcessingOrders.filter(o => {
-                                                    const isHold = o.status === 'hold';
-                                                    const isWaiting = o.status === 'waiting_customer' || (o.failed_couriers && o.failed_couriers.length > 0 && o.status === 'processing');
-                                                    const isDelivering = o.status === 'delivering';
-
-                                                    if (adminOperasionalSubTab === 'Semua') return true;
-                                                    if (adminOperasionalSubTab === 'Diproses') return o.status === 'processing' && !isWaiting;
-                                                    if (adminOperasionalSubTab === 'Menuju Lokasi') return isDelivering;
-                                                    if (adminOperasionalSubTab === 'Kendala') return isHold;
-                                                    if (adminOperasionalSubTab === 'Nyerah') return isWaiting;
-                                                    return true;
-                                                }).map(o => {
-                                                    const isHold = o.status === 'hold';
-                                                    const isWaiting = o.status === 'waiting_customer' || (o.failed_couriers && o.failed_couriers.length > 0 && o.status === 'processing');
-                                                    const isDelivering = o.status === 'delivering';
-
-                                                    return (
-                                                        <div key={o.id} className={`p-4 md:p-5 border-y md:border-x border-gray-200 md:rounded-2xl flex flex-col h-full relative overflow-hidden ${isHold ? 'bg-orange-50 border-orange-200' : isWaiting ? 'bg-red-50 border-red-200' : isDelivering ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
-                                                            <div className={`absolute top-0 left-0 w-1.5 h-full ${isHold ? 'bg-orange-400' : isWaiting ? 'bg-red-500 animate-pulse' : isDelivering ? 'bg-blue-400' : 'bg-emerald-400'}`}></div>
-                                                            <div className="flex justify-between items-start mb-2 pl-2">
-                                                                <ServiceBadge type={o.tipe_layanan} />
-                                                                <span className="text-[10px] font-bold text-gray-400">{formatDateTime(o.created_at)}</span>
-                                                            </div>
-                                                        <div className="pl-2">
-                                                            <div className="flex justify-between items-center mb-1">
-                                                                <p className="font-bold text-gray-900 text-sm truncate">{o.customer_name || o.customer_wa.split('-')[0]}</p>
-                                                                <a href={getWaLink(o.customer_wa)} target="_blank" rel="noreferrer" className="bg-[#25D366]/10 text-[#128C7E] hover:bg-[#25D366] hover:text-white px-2 py-1 rounded text-[10px] font-bold transition shadow-sm border border-[#25D366]/30 flex items-center gap-1 shrink-0">
-                                                                    💬 WA
-                                                                </a>
-                                                            </div>
-                                                            <p className="text-[10px] font-bold text-gray-500 mb-1">{o.customer_wa}</p>
-                                                            <p className="text-[10px] text-gray-500 mb-2 font-medium flex items-start gap-1">📍 <span>{o.customer_address}</span></p>
-
-                                                            {o.image_url && (
-                                                                <button onClick={() => setLightboxImg(o.image_url)} className="mb-2 w-max px-2 py-1 bg-blue-50 text-[#004aad] text-[9px] font-bold rounded border border-blue-200 flex items-center gap-1">
-                                                                    📸 Lihat Foto
-                                                                </button>
-                                                            )}
-
-                                                            {isDelivering && o.tipe_layanan === 'Belanja' && o.bill_details ? (
-                                                                <div className="bg-white p-3 rounded-lg text-[10px] font-mono border border-blue-100 my-2 flex-grow whitespace-pre-wrap text-blue-900 shadow-inner">
-                                                                    <p className="font-bold uppercase border-b border-blue-200 pb-1 mb-1 text-center">🧾 Struk Belanjaan & Tagihan</p>
-                                                                    {o.bill_details}
-                                                                </div>
-                                                            ) : (
-                                                                <div className="bg-white p-2.5 rounded-lg text-[10px] font-mono text-gray-600 border border-gray-100 my-2 flex-grow line-clamp-3 whitespace-pre-wrap">{o.raw_order_text}</div>
-                                                            )}
-                                                        </div>
-
-                                                        {/* Hold Biasa (Kendala ringan -> Negosiasi) */}
-                                                        {isHold && (
-                                                            <div className="pl-2 mt-2">
-                                                                <div className="bg-orange-100 p-2.5 rounded-lg border border-orange-200">
-                                                                    <p className="text-[10px] font-bold text-orange-800 uppercase mb-1">💬 Kurir Lapor Kendala:</p>
-                                                                    <p className="text-xs text-orange-900 font-bold whitespace-pre-wrap">{o.kendala_info}</p>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* Kurir Nyerah -> Admin Take Action */}
-                                                        {isWaiting && (
-                                                            <div className="pl-2 mt-2 flex flex-col h-full">
-                                                                <div className="bg-red-100 p-3 rounded-lg border border-red-200 mb-3 shadow-inner">
-                                                                    <p className="text-[10px] font-bold text-red-800 uppercase mb-1 flex items-center gap-1">
-                                                                        <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span></span>
-                                                                        KURIR MENYERAH / BATAL
-                                                                    </p>
-                                                                    <p className="text-xs text-red-900 font-medium">Hubungi Customer. Kurir sebelumnya menyerah karena kendala.</p>
-                                                                </div>
-
-                                                                <div className="space-y-2 pt-2 border-t border-red-200 mt-auto">
-                                                                    <p className="text-[10px] font-bold text-gray-600 uppercase">Pilih Kurir Pengganti & Lanjut</p>
-                                                                    <CustomCourierSelect
-                                                                        value={dispatchInputs[`${o.id}_courier_ganti`] || ""}
-                                                                        onChange={(val) => setDispatchInputs({ ...dispatchInputs, [`${o.id}_courier_ganti`]: val })}
-                                                                        placeholder="-- Pilih Kurir Baru --"
-                                                                        bgClass="bg-white"
-                                                                        couriersList={couriersList}
-                                                                        activeCourierCounts={activeCourierCounts}
-                                                                        courierRatingStats={courierRatingStats}
-                                                                    />
-                                                                    <div className="flex gap-2 mt-2">
-                                                                        <button
-                                                                            onClick={() => cancelPendingOrder(o.id)}
-                                                                            className="flex-1 bg-white text-red-600 font-bold py-2.5 rounded-lg text-xs border border-red-200 hover:bg-red-50 transition"
-                                                                        >
-                                                                            Cancel
-                                                                        </button>
-                                                                        <button
-                                                                            onClick={async () => {
-                                                                                const newCourier = dispatchInputs[`${o.id}_courier_ganti`];
-                                                                                if (!newCourier) return showNotif("Pilih kurir pengganti dulu!", "error");
-                                                                                try {
-                                                                                    const { error } = await supabase.from("orders").update({
-                                                                                        status: "processing",
-                                                                                        assigned_courier_id: newCourier,
-                                                                                        kendala_info: null,
-                                                                                        dispatched_at: new Date().toISOString()
-                                                                                    }).eq("id", o.id);
-                                                                                    if (error) throw error;
-                                                                                    showNotif("Berhasil ganti kurir & lanjut proses!", "success");
-                                                                                    setDispatchInputs({ ...dispatchInputs, [`${o.id}_courier_ganti`]: "" });
-                                                                                } catch (err) { showNotif(`Gagal Ganti Kurir: ${err.message}`, "error"); }
-                                                                            }}
-                                                                            className="flex-[1.5] bg-[#004aad] text-white font-bold py-2.5 rounded-lg text-xs shadow-md hover:bg-[#003b8a] transition"
-                                                                        >
-                                                                            Ganti & Lanjut 🚀
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-
-                                                        {/* Action Biasa */}
-                                                        {(!isWaiting) && (
-                                                            <div className="flex flex-col mt-auto pt-3 pl-2">
-                                                                {/* HAPUS SYARAT 'Belanja' BIAR MUNCUL DI SEMUA LAYANAN */}
-                                                                {isDelivering && (
-                                                                    <div className="mb-3 pt-3 border-t border-blue-200/50">
-                                                                        {/* INFORMASI STATUS STRUK TAGIHAN DI TAMPILAN ADMIN */}
-                                                                        <div className="flex justify-between items-center mb-2">
-                                                                            <span className="text-[10px] font-bold text-gray-500 uppercase">Status Struk Tagihan:</span>
-                                                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${o.bill_sent ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                                                                                {o.bill_sent ? 'Sudah Dikirim ke Customer ✅' : 'Belum Dikirim ke Customer ❌'}
-                                                                            </span>
-                                                                        </div>
-                                                                        <div className="flex justify-between items-center mb-1">
-                                                                            <span className="text-[10px] font-bold text-gray-500 uppercase">Total Belanjaan:</span>
-                                                                            <span className="text-sm font-bold text-gray-700 notranslate">Rp {parseFloat(o.total_price || 0).toLocaleString('id-ID')}</span>
-                                                                        </div>
-                                                                        <div className="flex justify-between items-center mb-2">
-                                                                            <span className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
-                                                                                Total Ongkir: 
-                                                                                <button onClick={() => handleEditOngkirAdmin(o)} className="text-blue-500 hover:text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded ml-1 text-[8px] flex items-center gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" fill="currentColor" viewBox="0 0 256 256"><path d="M227.31,73.37,182.63,28.68a16,16,0,0,0-22.63,0L36.69,152A15.86,15.86,0,0,0,32,163.31V208a16,16,0,0,0,16,16H92.69A15.86,15.86,0,0,0,104,219.31L227.31,96a16,16,0,0,0,0-22.63ZM92.69,208H48V163.31l88-88L180.69,120ZM192,108.68,147.31,64l24-24L216,84.68Z"></path></svg> Edit</button>
-                                                                            </span>
-                                                                            <span className="text-sm font-bold text-orange-600 notranslate">Rp {parseFloat(o.delivery_fee || 0).toLocaleString('id-ID')}</span>
-                                                                        </div>
-                                                                        <div className="flex justify-between items-center mb-2 pt-1 border-t border-dashed border-gray-200">
-                                                                            <span className="text-[11px] font-extrabold text-gray-800 uppercase">Grand Total:</span>
-                                                                            <span className="text-sm font-extrabold text-blue-700 notranslate">Rp {(parseFloat(o.total_price || 0) + parseFloat(o.delivery_fee || 0)).toLocaleString('id-ID')}</span>
-                                                                        </div>
-                                                                        <button onClick={() => handleKirimTagihanKeCustomer(o)} className="w-full bg-[#25D366] hover:bg-[#128C7E] text-white py-2.5 rounded-lg text-[11px] font-bold shadow-md transition flex items-center justify-center gap-1.5">
-                                                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 256 256"><path d="M187.58,144.84l-32-16a8,8,0,0,0-8,.5l-14.69,9.8a40.55,40.55,0,0,1-38.6-38.6l9.8-14.69a8,8,0,0,0,.5-8l-16-32A8,8,0,0,0,80,40a24,24,0,0,0-24,24c0,76.22,63.78,140,140,140a24,24,0,0,0,24-24A8,8,0,0,0,211.58,172.58Z" opacity="0.2"></path><path d="M232,112.44v37.66a8,8,0,0,1-16,0V112.44A88,88,0,0,0,128.44,24a8,8,0,0,1,0-16A104,104,0,0,1,232,112.44Zm-47.53,8.08a8,8,0,0,0-11.31-11.31A39.9,39.9,0,0,0,144.88,80.89a8,8,0,0,0,0,16A23.94,23.94,0,0,1,184.47,120.52ZM128,24A104,104,0,0,0,36.18,176.88L24.83,210.93a16,16,0,0,0,20.24,20.24l34.05-11.35A104,104,0,1,0,128,24Zm0,192a87.87,87.87,0,0,1-44.06-11.81,8,8,0,0,0-6.54-.67L40,216,52.47,178.6a8,8,0,0,0-.66-6.54A88,88,0,1,1,128,216Zm65.76-60.45a24,24,0,0,1-23.7,28.45c-66,0-120-54-120-120a24,24,0,0,1,28.45-23.71,16,16,0,0,1,13.12,11.62l16,32a16,16,0,0,1-1,16L91.9,114.61a56.55,56.55,0,0,0,49.49,49.49l14.69-14.73a16,16,0,0,1,16-1l32,16A16,16,0,0,1,216,177.58l-22.24,38.53Z"></path></svg>
-                                                                            {o.bill_sent ? 'Kirim Ulang Struk ke Customer' : 'Kirim Tagihan ke Customer'}
-                                                                        </button>
-                                                                    </div>
-                                                                )}
-                                                                <div className="flex justify-between items-center w-full">
-                                                                    <span className="text-[10px] font-bold text-gray-500 uppercase">
-                                                                        Mitra: {couriersList.find(c => c.id === o.assigned_courier_id)?.full_name}
-                                                                        {isDelivering && <span className="ml-1 text-blue-500">(Menuju Lokasi)</span>}
-                                                                    </span>
-                                                                    <div className="flex gap-1.5">
-                                                                        <button onClick={() => cancelPendingOrder(o.id)} className="font-bold text-[10px] px-2 py-1.5 rounded-lg border shadow-sm transition whitespace-nowrap bg-red-50 text-red-600 border-red-200 hover:bg-red-100">
-                                                                            ❌ Batal
-                                                                        </button>
-                                                                        <button onClick={() => { setEditingOrder({ id: o.id, text: o.raw_order_text, status: o.status, kendala_info: o.kendala_info }); setIsEditModalOpen(true); }} className="font-bold text-[10px] px-3 py-1.5 rounded-lg border shadow-sm transition whitespace-nowrap bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100">
-                                                                            📝 Edit
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                            {adminProcessingOrders.length === 0 && <div className="col-span-full p-10 text-center bg-white rounded-2xl border border-gray-200 shadow-sm font-bold text-gray-500">Tidak ada order yang sedang di jalan.</div>}
-                                        </div>
-                                    </div>
-                                    )}
-
-                                    {/* FAB INPUT MANUAL */}
-                                    <button 
-                                        onClick={() => setIsManualModalOpen(true)}
-                                        className="fixed bottom-24 right-4 md:right-8 z-40 bg-[#004aad] hover:bg-[#003b8a] text-white w-14 h-14 rounded-full shadow-[0_4px_15px_rgba(0,74,173,0.4)] flex items-center justify-center transition-transform hover:scale-105 active:scale-95"
-                                    >
-                                        <span className="text-3xl font-light mb-1">+</span>
-                                    </button>
-                                </div>
+                                <AdminOperasionalTab
+                                    adminOperasionalTab={adminOperasionalTab}
+                                    setAdminOperasionalTab={setAdminOperasionalTab}
+                                    adminOperasionalSubTab={adminOperasionalSubTab}
+                                    setAdminOperasionalSubTab={setAdminOperasionalSubTab}
+                                    adminPendingOrders={adminPendingOrders}
+                                    adminProcessingOrders={adminProcessingOrders}
+                                    dispatchInputs={dispatchInputs}
+                                    setDispatchInputs={setDispatchInputs}
+                                    couriersList={couriersList}
+                                    activeCourierCounts={activeCourierCounts}
+                                    courierRatingStats={courierRatingStats}
+                                    isCustomOrderOpen={isCustomOrderOpen}
+                                    isTogglingCustomOrder={isTogglingCustomOrder}
+                                    customOrderMerchantId={customOrderMerchantId}
+                                    onCopyFormat={copyFormat}
+                                    onToggleCustomOrder={handleToggleCustomOrder}
+                                    onSetLightboxImg={setLightboxImg}
+                                    onDispatch={handleDispatch}
+                                    onCancelPendingOrder={cancelPendingOrder}
+                                    onReplaceCourier={async (order) => {
+                                        const newCourier = dispatchInputs[`${order.id}_courier_ganti`];
+                                        if (!newCourier) return showNotif("Pilih kurir pengganti dulu!", "error");
+                                        try {
+                                            const { error } = await supabase.from("orders").update({ status: "processing", assigned_courier_id: newCourier, kendala_info: null, dispatched_at: new Date().toISOString() }).eq("id", order.id);
+                                            if (error) throw error;
+                                            showNotif("Berhasil ganti kurir & lanjut proses!", "success");
+                                            setDispatchInputs({ ...dispatchInputs, [`${order.id}_courier_ganti`]: "" });
+                                        } catch (err) { showNotif(`Gagal Ganti Kurir: ${err.message}`, "error"); }
+                                    }}
+                                    onEditOngkir={handleEditOngkirAdmin}
+                                    onSendBillToCustomer={handleKirimTagihanKeCustomer}
+                                    onEditOrder={(order) => { setEditingOrder({ id: order.id, text: order.raw_order_text, status: order.status, kendala_info: order.kendala_info }); setIsEditModalOpen(true); }}
+                                    onOpenManualOrder={() => setIsManualModalOpen(true)}
+                                />
                             )}
                             {/* TAB RIWAYAT ADMIN */}
+                            {/* [LEVEL 3 #12] Di-extract ke src/pages/admin/AdminRiwayatTab.jsx */}
                             {adminMainTab === 'riwayat' && (
-                                <div className="space-y-4">
-                                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-wrap gap-3 items-center">
-                                        <select className="bg-gray-50 border border-gray-200 text-gray-800 text-xs sm:text-sm rounded-xl px-3 py-2 font-bold outline-none flex-grow" value={adminFilterPeriod} onChange={(e) => setAdminFilterPeriod(e.target.value)}>
-                                            <option value="today">Hari Ini</option><option value="week">7 Hari Terakhir</option><option value="month">Bulan Ini</option><option value="year">Tahun Ini</option><option value="all">Semua Waktu</option><option value="custom">Pilih Rentang Tanggal</option>
-                                        </select>
-                                        {/* BLOK KALENDER (MUNCUL KALAU MILIH CUSTOM) */}
-                                        {adminFilterPeriod === 'custom' && (
-                                            <div className="flex items-center gap-2 flex-grow">
-                                                <input type="date" className="bg-gray-50 border border-gray-200 text-gray-800 text-xs sm:text-sm rounded-xl px-3 py-2 font-bold outline-none w-full" value={adminFilterStartDate} onChange={e => setAdminFilterStartDate(e.target.value)} />
-                                                <span className="text-gray-400 font-bold">-</span>
-                                                <input type="date" className="bg-gray-50 border border-gray-200 text-gray-800 text-xs sm:text-sm rounded-xl px-3 py-2 font-bold outline-none w-full" value={adminFilterEndDate} onChange={e => setAdminFilterEndDate(e.target.value)} />
-                                            </div>
-                                        )}
-                                        <select className="bg-gray-50 border border-gray-200 text-gray-800 text-xs sm:text-sm rounded-xl px-3 py-2 font-bold outline-none flex-grow" value={adminFilterService} onChange={(e) => setAdminFilterService(e.target.value)}>
-                                            <option value="all">Semua Layanan</option><option value="Belanja">Belanja</option><option value="Antar Jemput">Antar Jemput</option><option value="Kirim Barang">Kirim Barang</option>
-                                        </select>
-                                        <select className="bg-gray-50 border border-gray-200 text-gray-800 text-xs sm:text-sm rounded-xl px-3 py-2 font-bold outline-none flex-grow" value={adminFilterStatus} onChange={(e) => setAdminFilterStatus(e.target.value)}>
-                                            <option value="all">Semua Status</option><option value="completed">Sukses</option><option value="cancelled">Batal</option><option value="failed">Gagal / Nyerah</option>
-                                        </select>
-                                        <select className="bg-gray-50 border border-gray-200 text-gray-800 text-xs sm:text-sm rounded-xl px-3 py-2 font-bold outline-none flex-grow" value={adminFilterCourier} onChange={(e) => setAdminFilterCourier(e.target.value)}>
-                                            <option value="all">Semua Kurir</option>
-                                            {couriersList.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-                                        </select>
-                                        <div className="relative w-full sm:w-auto flex-grow">
-                                            <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">🔍</span>
-                                            <input type="text" placeholder="Cari Nama Customer..." className="bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl pl-9 pr-4 py-2 font-medium outline-none w-full focus:border-[#004aad]" value={adminHistorySearch} onChange={(e) => setAdminHistorySearch(e.target.value)} />
-                                        </div>
-                                    </div>
-
-                                    {(() => {
-                                        const filteredOrders = adminAnalytics.periodOrders
-                                            .filter(o => o.status === 'completed' || o.status === 'cancelled')
-                                            .filter(o => adminFilterService === 'all' ? true : o.tipe_layanan === adminFilterService)
-                                            .filter(o => {
-                                                if (adminFilterStatus === 'all') return true;
-                                                if (adminFilterStatus === 'completed') return o.status === 'completed';
-                                                if (adminFilterStatus === 'cancelled') return o.status === 'cancelled' && (!o.failed_couriers || o.failed_couriers.length === 0);
-                                                if (adminFilterStatus === 'failed') return o.failed_couriers && o.failed_couriers.length > 0;
-                                                return true;
-                                            })
-                                            .filter(o => adminFilterCourier === 'all' ? true : o.assigned_courier_id === adminFilterCourier)
-                                            .filter(o => (o.customer_name || o.customer_wa || '').toLowerCase().includes(adminHistorySearch.toLowerCase()));
-
-                                        return (<>
-                                            {isFetchingHistory ? (
-                                                <div className="flex flex-col items-center justify-center py-12 text-gray-500">
-                                                    <div className="w-10 h-10 border-4 border-gray-200 border-t-[#004aad] rounded-full animate-spin mb-4"></div>
-                                                    <p className="font-bold text-sm">Memuat Data Riwayat...</p>
-                                                </div>
-                                            ) : (
-                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                                {filteredOrders.slice(0, adminHistoryLimit).map(o => {
-                                                    const isFailed = o.failed_couriers && o.failed_couriers.length > 0;
-                                                    const statusLabel = o.status === 'completed' ? 'Sukses' : (isFailed ? 'Gagal' : 'Batal');
-                                                    const statusColor = o.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : (isFailed ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-700');
-
-                                                    return (
-                                                        <div key={o.id} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col hover:border-blue-200 transition">
-                                                            <div className="flex justify-between items-start mb-2">
-                                                                <span className={`text-[9px] font-bold px-2 py-1 rounded-md uppercase tracking-wider ${statusColor}`}>{statusLabel}</span>
-                                                                <span className="text-[9px] font-bold text-gray-400">{formatDateTime(o.created_at)}</span>
-                                                            </div>
-                                                            <div className="mb-2"><ServiceBadge type={o.tipe_layanan} /></div>
-                                                            <p className="font-bold text-gray-800 text-sm mb-1">{o.customer_name || o.customer_wa.split('-')[0]}</p>
-                                                            <p className="text-[10px] font-bold text-gray-500 mb-1">{o.customer_wa}</p>
-                                                            <p className="text-[10px] text-gray-500 mb-3 flex items-start gap-1">📍 <span>{o.customer_address}</span></p>
-
-                                                            {o.image_url && (
-                                                                <button onClick={() => setLightboxImg(o.image_url)} className="mb-2 w-max px-2 py-1 bg-blue-50 text-[#004aad] text-[9px] font-bold rounded border border-blue-200 flex items-center gap-1">
-                                                                    📸 Foto Tersimpan
-                                                                </button>
-                                                            )}
-
-                                                            {o.tipe_layanan === 'Belanja' && o.bill_details ? (
-                                                                <div className="bg-blue-50 p-2.5 rounded-lg text-[10px] font-mono border border-blue-100 mb-3 whitespace-pre-wrap text-blue-800 flex-grow">
-                                                                    <strong className="text-blue-900 block mb-1">Rincian Belanja:</strong>{o.bill_details}
-                                                                </div>
-                                                            ) : (
-                                                                <div className="bg-gray-50 p-2.5 rounded-lg text-[10px] font-mono border border-gray-100 mb-3 flex-grow line-clamp-3 whitespace-pre-wrap">{o.raw_order_text}</div>
-                                                            )}
-
-                                                            {o.status === 'cancelled' && (
-                                                                <div className="bg-red-50 p-2 rounded text-[9px] text-red-700 border border-red-100 mb-2 italic line-clamp-2">
-                                                                    <strong>Alasan Batal:</strong> {o.kendala_info || '-'}
-                                                                </div>
-                                                            )}
-                                                            {isFailed && (
-                                                                <div className="bg-orange-50 p-2 rounded text-[9px] text-orange-700 border border-orange-100 mb-2">
-                                                                    <strong>Riwayat Gagal (Nyerah):</strong>
-                                                                    {o.failed_couriers.map((fc, i) => (
-                                                                        <div key={i} className="mt-0.5">- {fc.name}: {fc.reason}</div>
-                                                                    ))}
-                                                                </div>
-                                                            )}
-
-                                                            {o.status === 'completed' && (
-                                                                <div className="flex flex-col gap-1.5 mt-2 pt-2 border-t border-gray-100">
-                                                                    <div className="flex justify-between items-center text-[10px] font-bold">
-                                                                        <span className="text-gray-500">⏱️ Durasi Pengerjaan:</span>
-                                                                        <span className="text-gray-800 bg-gray-100 px-2 py-0.5 rounded notranslate">{calculateDuration(o.dispatched_at, o.completed_at)}</span>
-                                                                    </div>
-                                                                    {o.tipe_layanan === 'Belanja' && (
-                                                                        <div className="flex justify-between items-center text-[10px] font-bold">
-                                                                            <span className="text-gray-500">Total Belanja (Talangan):</span>
-                                                                            <span className="text-red-500 text-sm notranslate">Rp {parseInt(o.total_price || 0).toLocaleString('id-ID')}</span>
-                                                                        </div>
-                                                                    )}
-                                                                    <div className="flex justify-between items-center text-[10px] font-bold">
-                                                                        <span className="text-gray-500">Ongkir/Jasa:</span>
-                                                                        <span className="text-emerald-600 text-sm notranslate">Rp {parseInt(o.delivery_fee || 0).toLocaleString('id-ID')}</span>
-                                                                    </div>
-                                                                    
-                                                                    {orderRatings[o.id] && (
-                                                                        <div className="mt-2 pt-2 border-t border-gray-100">
-                                                                            <div className="flex items-center gap-1 mb-1.5">
-                                                                                <span className="text-[10px] font-bold text-gray-500 mr-1">Rating Customer:</span>
-                                                                                <span className="text-yellow-400 text-xs">{"⭐".repeat(orderRatings[o.id].rating)}</span>
-                                                                                <span className="text-gray-300 text-xs">{"⭐".repeat(5 - orderRatings[o.id].rating)}</span>
-                                                                            </div>
-                                                                            {orderRatings[o.id].review && (
-                                                                                <details className="text-[10px] text-gray-600 bg-gray-50 rounded border border-gray-100 group transition-all">
-                                                                                    <summary className="cursor-pointer font-medium text-[#004aad] hover:bg-blue-50 p-2 outline-none select-none list-none relative flex justify-between items-center">
-                                                                                        <span><span className="group-open:hidden">Lihat</span><span className="hidden group-open:inline">Tutup</span> Ulasan</span>
-                                                                                        <span className="text-xs group-open:rotate-180 transition-transform">▼</span>
-                                                                                    </summary>
-                                                                                    <div className="p-2 pt-1 italic border-t border-gray-100">"{orderRatings[o.id].review}"</div>
-                                                                                </details>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            )}
-                                                            <div className="text-[9px] text-gray-400 mt-3 font-bold text-right uppercase">Mitra Terakhir: {couriersList.find(c => c.id === o.assigned_courier_id)?.full_name || 'Tidak ada'}</div>
-                                                              {user?.is_super_admin && (
-                                                                  <button onClick={() => handleDeleteOrder(o.id)} className="mt-3 w-full bg-red-50 text-red-600 hover:bg-red-100 font-bold py-2 rounded-lg text-[10px] transition border border-red-200 shadow-sm flex items-center justify-center gap-1">
-                                                                      🗑️ Hapus Permanen
-                                                                  </button>
-                                                              )}
-                                                        </div>
-                                                    )
-                                                })}
-                                            </div>
-                                            )}
-                                            {filteredOrders.length > adminHistoryLimit && !isFetchingHistory ? (
-                                                <div className="flex flex-col items-center mt-6 gap-3">
-                                                    <button onClick={() => setAdminHistoryLimit(prev => prev + 20)} className="bg-white text-[#004aad] px-6 py-2.5 rounded-xl font-bold shadow-sm border border-[#004aad] hover:bg-blue-50 transition w-full max-w-sm">
-                                                        Tampilkan Lebih Banyak ({filteredOrders.length - adminHistoryLimit} tersisa)
-                                                    </button>
-                                                    <button onClick={fetchAllHistoricalOrders} disabled={loading} className="text-gray-400 text-xs font-semibold hover:text-gray-600 transition underline">
-                                                        Tarik Data Lawas (Database)
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <div className="flex justify-center mt-6">
-                                                    <button onClick={fetchAllHistoricalOrders} disabled={loading} className="text-gray-400 text-xs font-semibold hover:text-gray-600 transition underline">
-                                                        Tarik Data Lawas (Database)
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </>)
-                                    })()}
-                                </div>
+                                <AdminRiwayatTab
+                                    adminFilterPeriod={adminFilterPeriod}
+                                    setAdminFilterPeriod={setAdminFilterPeriod}
+                                    adminFilterStartDate={adminFilterStartDate}
+                                    setAdminFilterStartDate={setAdminFilterStartDate}
+                                    adminFilterEndDate={adminFilterEndDate}
+                                    setAdminFilterEndDate={setAdminFilterEndDate}
+                                    adminFilterService={adminFilterService}
+                                    setAdminFilterService={setAdminFilterService}
+                                    adminFilterStatus={adminFilterStatus}
+                                    setAdminFilterStatus={setAdminFilterStatus}
+                                    adminFilterCourier={adminFilterCourier}
+                                    setAdminFilterCourier={setAdminFilterCourier}
+                                    adminHistorySearch={adminHistorySearch}
+                                    setAdminHistorySearch={setAdminHistorySearch}
+                                    adminHistoryLimit={adminHistoryLimit}
+                                    setAdminHistoryLimit={setAdminHistoryLimit}
+                                    adminAnalytics={adminAnalytics}
+                                    couriersList={couriersList}
+                                    isFetchingHistory={isFetchingHistory}
+                                    orderRatings={orderRatings}
+                                    user={user}
+                                    loading={loading}
+                                    setLightboxImg={setLightboxImg}
+                                    onDeleteOrder={handleDeleteOrder}
+                                    onFetchAllHistoricalOrders={fetchAllHistoricalOrders}
+                                />
                             )}
 
                             {/* TAB ANALITIK ADMIN */}
                             {adminMainTab === 'laporan' && (
-                                <div id="analytics-export-area" className="space-y-6 bg-gray-50 min-h-screen">
-                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-2">
-                                        <h2 className="text-xl font-bold text-gray-800 print-break">Dashboard Analitik Eksekutif</h2>
-                                        <button onClick={() => window.print()} className="no-print bg-gray-800 text-white px-4 py-2.5 rounded-xl font-bold shadow-md hover:bg-gray-900 transition flex items-center gap-2">
-                                            🖨️ Export PDF (Print)
-                                        </button>
-                                    </div>
-
-                                    {/* CONTROLS */}
-                                    <div className="no-print bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-wrap gap-4 items-center">
-                                        <select className="bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl px-4 py-2 font-bold outline-none flex-grow md:flex-none" value={adminFilterPeriod} onChange={(e) => setAdminFilterPeriod(e.target.value)}>
-                                            <option value="today">Hari Ini</option>
-                                            <option value="week">7 Hari Terakhir</option>
-                                            <option value="month">Bulan Ini</option>
-                                            <option value="year">Tahun Ini</option>
-                                            <option value="all">Semua Waktu</option>
-                                            <option value="custom">Custom (Pilih Rentang Tanggal)</option>
-                                        </select>
-
-                                        {adminFilterPeriod === 'custom' && (
-                                            <div className="flex items-center gap-2 flex-grow md:flex-none">
-                                                <input type="date" className="bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl px-3 py-2 font-bold outline-none" value={adminFilterStartDate} onChange={e => setAdminFilterStartDate(e.target.value)} />
-                                                <span className="text-gray-400 font-bold">-</span>
-                                                <input type="date" className="bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl px-3 py-2 font-bold outline-none" value={adminFilterEndDate} onChange={e => setAdminFilterEndDate(e.target.value)} />
-                                            </div>
-                                        )}
-
-                                        <div className="flex items-center gap-2 ml-auto w-full md:w-auto">
-                                            <div className="flex items-center gap-2 bg-blue-50 px-3 py-2 rounded-xl border border-blue-100 flex-1 md:flex-none">
-                                                <label className="text-[10px] font-bold text-[#004aad] uppercase leading-tight">Hak<br />Admin:</label>
-                                                <div className="flex items-center relative">
-                                                    <input type="number" className="w-12 bg-white border border-blue-200 text-[#004aad] text-sm rounded-md font-bold py-1 text-center outline-none" value={adminProfitShare} onChange={(e) => updateGlobalSettings('admin', e.target.value)} />
-                                                    <span className="absolute right-1 text-[10px] font-bold text-[#004aad] pointer-events-none">%</span>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2 bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-100 flex-1 md:flex-none">
-                                                <label className="text-[10px] font-bold text-emerald-700 uppercase leading-tight">Uang<br />Kas:</label>
-                                                <div className="flex items-center relative">
-                                                    <input type="number" className="w-12 bg-white border border-emerald-200 text-emerald-700 text-sm rounded-md font-bold py-1 text-center outline-none" value={kasShare} onChange={(e) => updateGlobalSettings('kas', e.target.value)} />
-                                                    <span className="absolute right-1 text-[10px] font-bold text-emerald-700 pointer-events-none">%</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* KPI TOTAL ORDERS */}
-                                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col md:flex-row justify-between items-center gap-4 print-break">
-                                        <div className="text-center md:text-left border-b md:border-b-0 md:border-r border-gray-100 pb-4 md:pb-0 md:pr-6 w-full md:w-auto">
-                                            <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Total Order Masuk</p>
-                                            <h3 className="text-4xl font-bold text-[#004aad]">{adminAnalytics.totalOrdersPeriod} <span className="text-sm font-bold text-gray-400">Order</span></h3>
-                                        </div>
-
-                                        <div className="flex-1 w-full grid grid-cols-3 gap-2 sm:gap-4">
-                                            <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100">
-                                                <p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Sukses</p>
-                                                <p className="text-2xl font-bold text-emerald-700">{adminAnalytics.suksesOrders}</p>
-                                                <p className="text-[10px] font-bold text-emerald-500">{adminAnalytics.persenSukses}%</p>
-                                            </div>
-                                            <div className="bg-gray-50 rounded-xl p-3 text-center border border-gray-200">
-                                                <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Batal</p>
-                                                <p className="text-2xl font-bold text-gray-700">{adminAnalytics.batalOrders}</p>
-                                                <p className="text-[10px] font-bold text-gray-500">{adminAnalytics.persenBatal}%</p>
-                                            </div>
-                                            <div className="bg-red-50 rounded-xl p-3 text-center border border-red-100">
-                                                <p className="text-[10px] font-bold text-red-600 uppercase mb-1">Gagal (Nyerah)</p>
-                                                <p className="text-2xl font-bold text-red-700">{adminAnalytics.gagalOrders}</p>
-                                                <p className="text-[10px] font-bold text-red-500">{adminAnalytics.persenGagal}%</p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* RATA RATA DURASI (SLA) */}
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 print-break">
-                                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 text-center">
-                                            <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Rata-Rata Pengerjaan Global</p>
-                                            <h3 className="text-xl font-bold text-gray-900 notranslate">{adminAnalytics.avgDurationAll}</h3>
-                                        </div>
-                                        <div className="bg-blue-50 p-4 rounded-2xl shadow-sm border border-blue-100 text-center">
-                                            <p className="text-[10px] font-bold text-blue-600 uppercase mb-1">Rata-Rata Pengerjaan Belanja</p>
-                                            <h3 className="text-xl font-bold text-blue-800 notranslate">{adminAnalytics.avgDurationBelanja}</h3>
-                                        </div>
-                                        <div className="bg-yellow-50 p-4 rounded-2xl shadow-sm border border-yellow-100 text-center">
-                                            <p className="text-[10px] font-bold text-yellow-600 uppercase mb-1">Rata-Rata Pengerjaan Antar Jemput</p>
-                                            <h3 className="text-xl font-bold text-yellow-800 notranslate">{adminAnalytics.avgDurationOjek}</h3>
-                                        </div>
-                                        <div className="bg-emerald-50 p-4 rounded-2xl shadow-sm border border-emerald-100 text-center">
-                                            <p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Rata-Rata Pengerjaan Kirim Barang</p>
-                                            <h3 className="text-xl font-bold text-emerald-800 notranslate">{adminAnalytics.avgDurationKirim}</h3>
-                                        </div>
-                                    </div>
-
-                                    {/* FINANCIALS */}
-                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 print-break">
-                                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 border-l-4 border-l-gray-400 col-span-2 sm:col-span-1">
-                                            <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Total Omset Jasa</p>
-                                            <h3 className="text-xl font-bold text-gray-900 notranslate">Rp {adminAnalytics.totalOngkirPeriode.toLocaleString('id-ID')}</h3>
-                                            <p className="text-[9px] font-bold text-gray-500 mt-1">Dari {adminAnalytics.analitikSelesai.length} Order Sukses</p>
-                                        </div>
-                                        <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 border-l-4 border-l-emerald-400">
-                                            <p className="text-[10px] font-bold text-emerald-600 uppercase mb-1">Hak Kurir (Netto)</p>
-                                            <h3 className="text-xl font-bold text-emerald-700 notranslate">Rp {adminAnalytics.totalHakKurirGlobal.toLocaleString('id-ID')}</h3>
-                                        </div>
-                                        <div className="bg-[#004aad] text-white p-4 rounded-2xl shadow-md relative overflow-hidden">
-                                            <p className="text-[10px] font-bold text-blue-200 uppercase mb-1">Hak Admin ({adminProfitShare}%)</p>
-                                            <h3 className="text-xl font-bold text-white notranslate">Rp {adminAnalytics.hakAdminPure.toLocaleString('id-ID')}</h3>
-                                        </div>
-                                        <div className="bg-[#10b981] text-white p-4 rounded-2xl shadow-md relative overflow-hidden">
-                                            <p className="text-[10px] font-bold text-emerald-100 uppercase mb-1">Uang Kas ({kasShare}% + Denda)</p>
-                                            <h3 className="text-xl font-bold text-[#ffde59] notranslate">Rp {adminAnalytics.totalKasTermasukDenda.toLocaleString('id-ID')}</h3>
-                                        </div>
-                                    </div>
-
-                                    {/* TREN ORDER WAKTU (LINE CHART) */}
-                                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 print-break">
-                                        <div className="flex justify-between items-center mb-6">
-                                            <h3 className="text-xs font-bold text-gray-600 uppercase tracking-wider">📈 Tren Orderan per Waktu</h3>
-                                            <select className="no-print bg-gray-50 border border-gray-200 text-gray-800 text-xs rounded-lg px-2 py-1 font-bold outline-none" value={adminChartGrouping} onChange={(e) => setAdminChartGrouping(e.target.value)}>
-                                                <option value="daily">Harian</option><option value="weekly">Mingguan</option><option value="monthly">Bulanan</option><option value="yearly">Tahunan</option>
-                                            </select>
-                                        </div>
-                                        <div className="h-64">
-                                            <ResponsiveContainer width="100%" height="100%">
-                                                <LineChart data={adminAnalytics.trendDataTime} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
-                                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                                                    <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
-                                                    <YAxis tick={{ fontSize: 10, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
-                                                    <RechartsTooltip content={<SimpleTooltip label="Periode" />} />
-                                                    <Line type="monotone" name="Belanja" dataKey="Belanja" stroke="#004aad" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                                                    <Line type="monotone" name="Antar Jemput" dataKey="Antar Jemput" stroke="#ffde59" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                                                    <Line type="monotone" name="Kirim Barang" dataKey="Kirim Barang" stroke="#10b981" strokeWidth={3} dot={{ r: 3 }} activeDot={{ r: 5 }} />
-                                                </LineChart>
-                                            </ResponsiveContainer>
-                                        </div>
-                                        <div className="flex justify-center gap-4 mt-4 text-[10px] font-bold">
-                                            <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-[#004aad]"></div> Belanja</span>
-                                            <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-[#ffde59]"></div> Antar Jemput</span>
-                                            <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-[#10b981]"></div> Kirim Barang</span>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 print-break">
-                                        {/* TREN ORDER JAM (LINE CHART) */}
-                                        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
-                                            <h3 className="text-xs font-bold text-gray-600 mb-6 uppercase tracking-wider text-center">⏰ Tren Jam Orderan (24 Jam)</h3>
-                                            <div className="h-56">
-                                                <ResponsiveContainer width="100%" height="100%">
-                                                    <LineChart data={adminAnalytics.trendDataHour} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
-                                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                                                        <XAxis dataKey="name" tick={{ fontSize: 9, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={20} />
-                                                        <YAxis tick={{ fontSize: 10, fill: '#9ca3af', fontWeight: 'bold' }} axisLine={false} tickLine={false} />
-                                                        <RechartsTooltip content={<SimpleTooltip label="Jam Order" />} />
-                                                        <Line type="monotone" name="Belanja" dataKey="Belanja" stroke="#004aad" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                                                        <Line type="monotone" name="Antar Jemput" dataKey="Antar Jemput" stroke="#ffde59" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                                                        <Line type="monotone" name="Kirim Barang" dataKey="Kirim Barang" stroke="#10b981" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
-                                                    </LineChart>
-                                                </ResponsiveContainer>
-                                            </div>
-                                            <div className="flex justify-center gap-4 mt-4 text-[10px] font-bold">
-                                                <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-[#004aad]"></div> Belanja</span>
-                                                <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-[#ffde59]"></div> Ojek</span>
-                                                <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-[#10b981]"></div> Kirim</span>
-                                            </div>
-                                        </div>
-
-                                        {/* DISTRIBUSI LAYANAN (BAR CHART) */}
-                                        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
-                                            <h3 className="text-xs font-bold text-gray-600 mb-6 uppercase tracking-wider text-center">📦 Komposisi Layanan</h3>
-                                            <div className="h-56">
-                                                <ResponsiveContainer width="100%" height="100%">
-                                                    <BarChart data={adminAnalytics.serviceData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                                                        <XAxis type="number" hide />
-                                                        <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#4b5563', fontWeight: 'bold' }} width={80} />
-                                                        <RechartsTooltip content={<SimpleTooltip />} cursor={{ fill: '#f3f4f6' }} />
-                                                        <Bar dataKey="value" name="Total Order" radius={[0, 8, 8, 0]}>
-                                                            {adminAnalytics.serviceData.map((entry, index) => (<Cell key={`cell-${index}`} fill={entry.fill} />))}
-                                                        </Bar>
-                                                    </BarChart>
-                                                </ResponsiveContainer>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* LEADERBOARD */}
-                                    <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden print-break">
-                                        <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
-                                            <h3 className="text-xs font-bold text-gray-800 uppercase tracking-wider">🏆 Leaderboard & Evaluasi Kurir</h3>
-                                            <span className="text-[10px] font-bold text-gray-500 bg-white px-2 py-1 border border-gray-200 rounded">Target {adminAnalytics.targetOrders > 0 ? `${adminAnalytics.targetOrders} Order / ${adminFilterPeriod}` : 'Off'}</span>
-                                        </div>
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left border-collapse">
-                                                <thead>
-                                                    <tr className="bg-white text-[10px] uppercase tracking-wider text-gray-400 border-b border-gray-100">
-                                                        <th className="p-4 sm:p-5 font-bold">Nama Mitra</th>
-                                                        <th className="p-4 sm:p-5 font-bold text-center">Order Sukses</th>
-                                                        <th className="p-4 sm:p-5 font-bold text-center">Batal / Cancel</th>
-                                                        <th className="p-4 sm:p-5 font-bold text-center text-orange-500">Gagal / Nyerah</th>
-                                                        <th className="p-4 sm:p-5 font-bold text-right">Pendapatan Kotor</th>
-                                                        <th className="p-4 sm:p-5 font-bold text-right text-red-500">Potongan Admin & Kas</th>
-                                                        {/* KOLOM DENDA HANYA MUNCUL JIKA BUKAN FILTER HARI INI */}
-                                                        {adminFilterPeriod !== 'today' && (
-                                                            <th className="p-4 sm:p-5 font-bold text-right text-red-500">Denda Target</th>
-                                                        )}
-                                                        <th className="p-4 sm:p-5 font-bold text-right text-emerald-600">Pendapatan Bersih</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="text-sm divide-y divide-gray-50">
-                                                    {adminAnalytics.courierPerformance.map((c, index) => (
-                                                        <tr key={c.id} className="hover:bg-blue-50/30 transition">
-                                                            <td className="p-4 sm:p-5">
-                                                                <div className="flex items-center gap-3">
-                                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${index === 0 ? 'bg-yellow-100 text-yellow-600' : index === 1 ? 'bg-gray-200 text-gray-600' : index === 2 ? 'bg-orange-100 text-orange-700' : 'bg-blue-50 text-blue-600'}`}>
-                                                                        {index + 1}
-                                                                    </div>
-                                                                    <span className="font-bold text-gray-900">{c.nama}</span>
-                                                                </div>
-                                                            </td>
-                                                            <td className="p-4 sm:p-5 text-center">
-                                                                <div className="flex flex-col items-center">
-                                                                    <span className="font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg">{c.totalSelesai}</span>
-                                                                    <span className="text-[10px] font-bold text-emerald-500 mt-1">{c.successRate}%</span>
-                                                                </div>
-                                                            </td>
-                                                            <td className="p-4 sm:p-5 text-center">
-                                                                <div className="flex flex-col items-center">
-                                                                    <span className="font-bold text-gray-600 bg-gray-50 px-3 py-1 rounded-lg">{c.totalBatal}</span>
-                                                                    <span className="text-[10px] font-bold text-gray-400 mt-1">{c.cancelRate}%</span>
-                                                                </div>
-                                                            </td>
-                                                            <td className="p-4 sm:p-5 text-center">
-                                                                <div className="flex flex-col items-center">
-                                                                    <span className="font-bold text-orange-600 bg-orange-50 px-3 py-1 rounded-lg">{c.totalGagal}</span>
-                                                                    <span className="text-[10px] font-bold text-orange-500 mt-1">{c.failRate}%</span>
-                                                                </div>
-                                                            </td>
-                                                            <td className="p-4 sm:p-5 text-right font-bold text-gray-700 notranslate">Rp {c.ongkir.toLocaleString('id-ID')}</td>
-                                                            <td className="p-4 sm:p-5 text-right font-bold text-red-500 notranslate">- Rp {c.potonganKasAdmin.toLocaleString('id-ID')}</td>
-                                                            {adminFilterPeriod !== 'today' && (
-                                                                <td className="p-4 sm:p-5 text-right font-bold text-red-500 notranslate">- Rp {c.denda.toLocaleString('id-ID')}</td>
-                                                            )}
-                                                            <td className="p-4 sm:p-5 text-right font-bold text-emerald-600 notranslate">Rp {c.hakKurir.toLocaleString('id-ID')}</td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                </div>
+                                <AdminLaporanTab
+                                    adminFilterPeriod={adminFilterPeriod}
+                                    setAdminFilterPeriod={setAdminFilterPeriod}
+                                    adminFilterStartDate={adminFilterStartDate}
+                                    setAdminFilterStartDate={setAdminFilterStartDate}
+                                    adminFilterEndDate={adminFilterEndDate}
+                                    setAdminFilterEndDate={setAdminFilterEndDate}
+                                    adminProfitShare={adminProfitShare}
+                                    kasShare={kasShare}
+                                    adminChartGrouping={adminChartGrouping}
+                                    setAdminChartGrouping={setAdminChartGrouping}
+                                    adminAnalytics={adminAnalytics}
+                                    onUpdateGlobalSettings={updateGlobalSettings}
+                                />
                             )}
+
                         </div>
                     </div>
                 )}
@@ -3587,722 +2073,78 @@ export default function App() {
 
                                 {/* TAB TUGAS */}
                                 {courierMainTab === 'tugas' && (
-                                    <div className="space-y-4 pt-4 md:px-0">
-                                        {/* Sub-Tabs Nav Courier */}
-                                        <div className="flex overflow-x-auto hide-scrollbar gap-5 px-4 md:px-0 border-b border-gray-200 mb-2">
-                                            {['Semua', 'Diproses', 'Menuju Lokasi', 'Kendala'].map(sub => (
-                                                <button key={sub} onClick={() => setCourierTugasSubTab(sub)}
-                                                    className={`whitespace-nowrap pb-2.5 text-[11px] uppercase tracking-wide font-bold transition-all border-b-[3px] ${courierTugasSubTab === sub ? 'text-[#004aad] border-[#004aad]' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
-                                                    {sub}
-                                                </button>
-                                            ))}
-                                        </div>
-
-                                        {courierActiveOrders.length === 0 && !loading && (
-                                            <div className="text-center p-10 bg-white md:rounded-2xl border-y md:border border-gray-200 shadow-sm mt-4">
-                                                <img src="/dekstop-icon.webp" className="w-16 h-16 mx-auto mb-3 opacity-30 grayscale" alt="Kosong" />
-                                                <span className="font-bold text-gray-500 block">Belum ada tugas baru.</span>
-                                            </div>
-                                        )}
-                                        
-                                        <div className="flex flex-col gap-0 md:gap-4">
-                                            {courierActiveOrders.filter(o => {
-                                                const isHold = o.status === 'hold';
-                                                const isDelivering = o.status === 'delivering';
-                                                const isProcessing = o.status === 'processing';
-                                                
-                                                if (courierTugasSubTab === 'Semua') return true;
-                                                if (courierTugasSubTab === 'Diproses') return isProcessing;
-                                                if (courierTugasSubTab === 'Menuju Lokasi') return isDelivering;
-                                                if (courierTugasSubTab === 'Kendala') return isHold;
-                                                return true;
-                                            }).map(task => {
-                                                const isHold = task.status === 'hold';
-                                                const isWaiting = task.failed_couriers && task.failed_couriers.some(fc => fc.id === user.id) && task.status === 'processing';
-                                                const jastipItemsObj = task.tipe_layanan === 'Belanja' ? parseJastipItemsObjects(task.raw_order_text) : [];
-                                                const jastipNote = task.tipe_layanan === 'Belanja' ? parseJastipNote(task.raw_order_text) : '';
-                                                const ojekData = task.tipe_layanan === 'Antar Jemput' ? parseOjekDetails(task.raw_order_text) : null;
-                                                const kirimData = task.tipe_layanan === 'Kirim Barang' ? parseKirimDetails(task.raw_order_text) : null;
-
-                                                return (
-                                                    <div key={task.id} className={`bg-white p-4 md:rounded-xl md:border-x border-y border-x-0 ${isHold ? 'border-orange-200 bg-orange-50/30' : (isWaiting ? 'border-red-200 bg-red-50/30' : 'border-gray-200')} shadow-none md:shadow-sm flex flex-col`}>
-
-                                                    <div className="flex justify-between items-start mb-3 border-b border-gray-100 pb-2">
-                                                        <span className={`text-[9px] font-bold px-2.5 py-1 rounded-md uppercase tracking-wider ${isHold ? 'bg-orange-100 text-orange-700' : (isWaiting ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700')}`}>
-                                                            {isHold ? 'KENDALA (TAHAN PROSES)' : (isWaiting ? 'MENUNGGU ADMIN' : (task.status === 'delivering' ? 'MENUJU LOKASI CUSTOMER' : 'SEDANG DIKERJAKAN'))}
-                                                        </span>
-                                                        <span className="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-0.5 rounded">{formatDateTime(task.created_at)}</span>
-                                                    </div>
-
-                                                    <div className="mb-2"><ServiceBadge type={task.tipe_layanan} /></div>
-                                                    <p className="font-bold text-gray-900 text-sm mb-2">{task.customer_name || task.customer_wa.split('-')[0]}</p>
-                                                    <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 mb-3 text-xs flex items-start gap-1.5 shadow-inner">
-                                                        <img src="/location-icon.webp" alt="Location" className="w-4 h-4 object-contain shrink-0 mt-0.5" />
-                                                        <span className="text-gray-700 font-semibold">{task.customer_address}</span>
-                                                    </div>
-
-                                                    {task.image_url && (
-                                                        <button onClick={() => setLightboxImg(task.image_url)} className="mb-4 w-full bg-blue-50 text-[#004aad] text-[10px] font-bold py-2 rounded-lg border border-blue-200 hover:bg-blue-100 flex items-center justify-center gap-1">
-                                                            📸 Lihat Foto Belanjaan
-                                                        </button>
-                                                    )}
-
-                                                    {task.tipe_layanan === 'Belanja' ? (
-                                                        <div className="mb-4">
-                                                            {task.status === 'delivering' ? (
-                                                                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 mb-2">
-                                                                    <div className="flex justify-between items-center border-b border-blue-200 pb-2 mb-3">
-                                                                        <p className="text-[10px] font-bold text-blue-800 uppercase">🧾 Summary Belanjaan</p>
-                                                                        <button onClick={() => { setEditingOrder({ id: task.id, text: task.raw_order_text, status: task.status, kendala_info: task.kendala_info }); setIsEditModalOpen(true); }} className="text-[10px] font-bold text-[#004aad] bg-white px-2.5 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition shadow-sm flex items-center gap-1">
-                                                                            ✏️ Edit/Tambah List
-                                                                        </button>
-                                                                    </div>
-                                                                    <div className="space-y-2 mb-3">
-                                                                        {jastipItemsObj.map((itemObj, idx) => {
-                                                                            const userPrice = jastipPrices[`${task.id}_${idx}`];
-                                                                            const finalPrice = userPrice !== undefined ? parseFloat(userPrice || 0) : itemObj.defaultPrice;
-                                                                            return (
-                                                                                <div key={idx} className="flex justify-between items-start gap-2">
-                                                                                    <span className="text-xs font-medium text-gray-700 leading-tight">{itemObj.name}</span>
-                                                                                    <span className="text-xs font-bold text-gray-900 whitespace-nowrap">Rp {parseInt(finalPrice || 0).toLocaleString('id-ID')}</span>
-                                                                                </div>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                    {jastipNote && (
-                                                                        <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200 mt-2 mb-3 shadow-sm">
-                                                                            <p className="text-[10px] font-bold text-yellow-800 uppercase mb-1">📝 Catatan Pelanggan:</p>
-                                                                            <p className="text-xs text-yellow-900 font-medium whitespace-pre-wrap">{jastipNote}</p>
-                                                                        </div>
-                                                                    )}
-                                                                    <div className="border-t border-blue-200 pt-2 flex justify-between items-center">
-                                                                        <span className="text-[10px] font-bold text-gray-500 uppercase">Subtotal Belanja:</span>
-                                                                        <span className="text-sm font-bold text-blue-700">Rp {calculateJastipTotal(task.id, task.raw_order_text).toLocaleString('id-ID')}</span>
-                                                                    </div>
-                                                                </div>
-                                                            ) : (
-                                                                <>
-                                                                    {jastipNote && (
-                                                                        <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200 mb-3 shadow-sm">
-                                                                            <p className="text-[10px] font-bold text-yellow-800 uppercase mb-1">📝 Catatan Pelanggan:</p>
-                                                                            <p className="text-xs text-yellow-900 font-medium whitespace-pre-wrap">{jastipNote}</p>
-                                                                        </div>
-                                                                    )}
-                                                                    <div className="flex justify-between items-center mb-2">
-                                                                        <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">List Belanjaan Secara Spesifik:</p>
-                                                                        <button onClick={() => { setEditingOrder({ id: task.id, text: task.raw_order_text, status: task.status, kendala_info: task.kendala_info }); setIsEditModalOpen(true); }} className="text-[10px] font-bold text-[#004aad] bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition shadow-sm flex items-center gap-1">
-                                                                            ✏️ Tambah/Edit List
-                                                                        </button>
-                                                                    </div>
-                                                                    {jastipItemsObj.map((itemObj, idx) => {
-                                                                        const userPrice = jastipPrices[`${task.id}_${idx}`];
-                                                                        const displayVal = userPrice !== undefined ? userPrice : (itemObj.defaultPrice > 0 ? itemObj.defaultPrice : '');
-                                                                        return (
-                                                                            <div key={idx} className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 flex flex-col gap-2 mb-2 shadow-inner">
-                                                                                <div className="flex items-start gap-2">
-                                                                                    <input type="checkbox" className="mt-1 w-4 h-4 rounded text-[#004aad] focus:ring-[#004aad]" checked={!!jastipChecked[`${task.id}_${idx}`]} onChange={(e) => updateJastipChecked(task.id, idx, e.target.checked)} />
-                                                                                    <span className="text-xs font-medium text-gray-800">{itemObj.name}</span>
-                                                                                </div>
-                                                                                {task.status !== 'hold' && (
-                                                                                    <input
-                                                                                        type="number"
-                                                                                        placeholder="Harga Barang (Rp)"
-                                                                                        className="w-full text-xs p-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[#004aad] font-bold text-[#004aad]"
-                                                                                        value={displayVal}
-                                                                                        onChange={(e) => updateJastipPrice(task.id, idx, e.target.value)}
-                                                                                    />
-                                                                                )}
-                                                                            </div>
-                                                                        );
-                                                                    })}
-                                                                    <div className="border-t border-gray-200 pt-2 mb-1 flex justify-between items-center">
-                                                                        <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Subtotal Belanja:</span>
-                                                                        <span className="text-sm font-bold text-[#004aad]">Rp {calculateJastipTotal(task.id, task.raw_order_text).toLocaleString('id-ID')}</span>
-                                                                    </div>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    ) : task.tipe_layanan === 'Antar Jemput' && ojekData ? (
-                                                        <div className="mb-4 space-y-2">
-                                                            <div className="bg-blue-50 p-3 rounded-xl border border-blue-200 shadow-sm">
-                                                                <p className="text-[10px] font-bold text-blue-800 uppercase mb-1 flex items-center gap-1">📍 Lokasi Jemput</p>
-                                                                <p className="text-xs text-blue-900 font-medium">{ojekData.jemput}</p>
-                                                            </div>
-                                                            <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 shadow-sm">
-                                                                <p className="text-[10px] font-bold text-emerald-800 uppercase mb-1 flex items-center gap-1">🏁 Lokasi Tujuan</p>
-                                                                <p className="text-xs text-emerald-900 font-medium">{ojekData.tujuan}</p>
-                                                            </div>
-                                                            {ojekData.note && ojekData.note !== '-' && (
-                                                                <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200 shadow-sm">
-                                                                    <p className="text-[10px] font-bold text-yellow-800 uppercase mb-1 flex items-center gap-1">📝 Patokan / Catatan</p>
-                                                                    <p className="text-xs text-yellow-900 font-medium whitespace-pre-wrap">{ojekData.note}</p>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    ) : task.tipe_layanan === 'Kirim Barang' && kirimData ? (
-                                                        <div className="mb-4 space-y-2">
-                                                            <div className="bg-gray-100 p-3 rounded-xl border border-gray-300 shadow-sm text-center">
-                                                                <p className="text-[10px] font-bold text-gray-500 uppercase mb-1 flex justify-center items-center gap-1">📦 Barang yang Dikirim</p>
-                                                                <p className="text-sm font-bold text-gray-800">{kirimData.barang}</p>
-                                                            </div>
-                                                            <div className="bg-blue-50 p-3 rounded-xl border border-blue-200 shadow-sm">
-                                                                <p className="text-[10px] font-bold text-blue-800 uppercase mb-1 flex items-center gap-1">📍 Lokasi Pengambilan</p>
-                                                                <p className="text-xs text-blue-900 font-medium">{kirimData.ambil}</p>
-                                                            </div>
-                                                            <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 shadow-sm">
-                                                                <p className="text-[10px] font-bold text-emerald-800 uppercase mb-1 flex items-center gap-1">🏁 Lokasi Tujuan</p>
-                                                                <p className="text-xs text-emerald-900 font-medium">{kirimData.tujuan}</p>
-                                                            </div>
-                                                            <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-200 shadow-sm">
-                                                                <p className="text-[10px] font-bold text-indigo-800 uppercase mb-1 flex items-center gap-1">👤 Nama Penerima</p>
-                                                                <p className="text-sm font-bold text-indigo-900">{kirimData.penerima}</p>
-                                                            </div>
-                                                            {kirimData.note && kirimData.note !== '-' && (
-                                                                <div className="bg-yellow-50 p-3 rounded-xl border border-yellow-200 shadow-sm">
-                                                                    <p className="text-[10px] font-bold text-yellow-800 uppercase mb-1 flex items-center gap-1">📝 Catatan Tambahan</p>
-                                                                    <p className="text-xs text-yellow-900 font-medium whitespace-pre-wrap">{kirimData.note}</p>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    ) : (
-                                                        <div className="bg-gray-50 p-3 rounded-lg text-xs font-mono border border-gray-100 mb-3 whitespace-pre-wrap shadow-inner">{task.raw_order_text}</div>
-                                                    )}
-
-                                                    {/* Info Harga Talangan & Ongkir */}
-                                                    {task.status === 'delivering' ? (
-                                                        <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-200 space-y-2 mb-4">
-                                                            <div className="flex justify-between items-center border-b border-emerald-200 pb-2">
-                                                                <span className="text-[10px] font-bold text-emerald-800 uppercase">Ongkos Jasa:</span>
-                                                                <span className="text-sm font-bold text-emerald-700">Rp {parseInt(task.delivery_fee || 0).toLocaleString('id-ID')}</span>
-                                                            </div>
-                                                            <div className="flex justify-between items-center pt-1">
-                                                                <span className="text-sm font-bold text-emerald-900">GRAND TOTAL:</span>
-                                                                <span className="text-xl font-bold text-emerald-600">Rp {(parseInt(task.total_price || 0) + parseInt(task.delivery_fee || 0)).toLocaleString('id-ID')}</span>
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex flex-col gap-2 mt-1 mb-4 bg-gray-50 p-3 rounded-xl border border-gray-200 shadow-inner">
-                                                            {task.status !== 'hold' && task.status === 'processing' ? (
-                                                                <div className="flex justify-between items-center text-xs font-bold">
-                                                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Edit Ongkos Jasa (Rp)</label>
-                                                                    <input type="number" placeholder="Input Ongkir" className="w-24 px-2 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-bold text-[#004aad] outline-none text-right focus:border-[#004aad]" value={dispatchInputs[`${task.id}_updateFee`] !== undefined ? dispatchInputs[`${task.id}_updateFee`] : (task.delivery_fee || '')} onChange={(e) => setDispatchInputs({ ...dispatchInputs, [`${task.id}_updateFee`]: e.target.value })} />
-                                                                </div>
-                                                            ) : (
-                                                                <div className="flex justify-between items-center text-xs font-bold">
-                                                                    <span className="text-gray-600 tracking-wider">Ongkir / Jasa:</span>
-                                                                    <span className="text-emerald-600 text-lg notranslate">Rp {parseInt(task.delivery_fee || 0).toLocaleString('id-ID')}</span>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-
-                                                    {/* Tombol Aksi */}
-                                                    {!isHold && !isWaiting && (
-                                                        <div className="flex flex-col gap-2">
-                                                            {task.status === 'processing' && (
-                                                                <>
-                                                                    <button onClick={() => {
-                                                                        const items = task.tipe_layanan === 'Belanja' ? parseJastipItemsObjects(task.raw_order_text).map(t => ({ text: t.name, isKendala: false, note: '' })) : [];
-                                                                        setKendalaForm({ id: task.id, type: task.tipe_layanan, text: '', jastipItems: items });
-                                                                        setIsKendalaModalOpen(true);
-                                                                    }} className="w-full text-xs font-bold text-orange-500 hover:text-orange-700 border border-orange-200 bg-orange-50 py-3 rounded-xl transition shadow-sm">
-                                                                        ⚠️ Lapor Kendala
-                                                                    </button>
-                                                                    <button onClick={() => handleKirimTagihanKeAdmin(task)} className="w-full bg-[#004aad] text-white font-bold py-3.5 rounded-xl shadow-[0_4px_0_#1d4ed8] active:shadow-[0_0px_0_#1d4ed8] active:translate-y-1 transition text-xs flex justify-center items-center gap-1 uppercase tracking-wider">
-                                                                        🧾 Kirim Tagihan ke Admin
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                            {task.status === 'delivering' && (
-                                                                <button onClick={() => handleCompleteOrder(task)} className="w-full bg-[#10b981] text-white font-bold py-4 rounded-xl shadow-md transition transform hover:-translate-y-1 text-sm mt-2 flex justify-center items-center gap-1">
-                                                                    ✅ Selesaikan Order (Uang Diterima)
-                                                                </button>
-                                                            )}
-                                                        </div>
-                                                    )}
-
-                                                    {isHold && (
-                                                        <div className="pl-2 mt-2">
-                                                            <div className="bg-orange-100 p-2.5 rounded-lg border border-orange-200 shadow-inner">
-                                                                <p className="text-[10px] font-bold text-orange-800 uppercase mb-1">💬 Laporan Kendala Kamu:</p>
-                                                                <p className="text-xs text-orange-900 font-bold whitespace-pre-wrap">{task.kendala_info}</p>
-                                                            </div>
-                                                            <div className="flex gap-2 mt-4">
-                                                                <button onClick={() => submitTidakBisaLanjut(task.id)} className="flex-[0.8] bg-red-500 text-white font-bold py-3.5 rounded-xl shadow-[0_4px_0_#b91c1c] active:shadow-[0_0px_0_#b91c1c] active:translate-y-1 transition text-xs flex justify-center items-center gap-1">
-                                                                    Nyerah (Batal)
-                                                                </button>
-                                                                <button onClick={() => handleLanjutProsesKendala(task.id)} className="flex-[1.2] bg-[#004aad] text-white font-bold py-3.5 rounded-xl shadow-[0_4px_0_#1d4ed8] active:shadow-[0_0px_0_#1d4ed8] active:translate-y-1 transition text-xs flex justify-center items-center gap-1">
-                                                                    Lanjut Proses 🚀
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    )}
-
-                                                    {isWaiting && (
-                                                        <div className="pl-2 mt-2 flex flex-col h-full">
-                                                            <div className="bg-red-100 p-3 rounded-lg border border-red-200 mb-3 shadow-inner">
-                                                                <p className="text-[10px] font-bold text-red-800 uppercase mb-1 flex items-center gap-1">
-                                                                    <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span></span>
-                                                                    MENYERAH (MENUNGGU ADMIN)
-                                                                </p>
-                                                                <p className="text-[10px] text-red-700 font-bold">Admin sedang mencarikan kurir pengganti atau membatalkan orderan ini secara sistem.</p>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )
-                                        })}
-                                    </div>
-                                    </div>
+                                    <CourierTugasAktifTab
+                                        courierActiveOrders={courierActiveOrders}
+                                        courierTugasSubTab={courierTugasSubTab}
+                                        setCourierTugasSubTab={setCourierTugasSubTab}
+                                        loading={loading}
+                                        user={user}
+                                        jastipPrices={jastipPrices}
+                                        jastipChecked={jastipChecked}
+                                        calculateJastipTotal={calculateJastipTotal}
+                                        updateJastipPrice={updateJastipPrice}
+                                        updateJastipChecked={updateJastipChecked}
+                                        dispatchInputs={dispatchInputs}
+                                        setDispatchInputs={setDispatchInputs}
+                                        onSetLightboxImg={setLightboxImg}
+                                        onOpenEditOrder={(order) => { setEditingOrder({ id: order.id, text: order.raw_order_text, status: order.status, kendala_info: order.kendala_info }); setIsEditModalOpen(true); }}
+                                        onOpenKendala={(order) => { const items = order.tipe_layanan === 'Belanja' ? parseJastipItemsObjects(order.raw_order_text).map(item => ({ text: item.name, isKendala: false, note: '' })) : []; setKendalaForm({ id: order.id, type: order.tipe_layanan, text: '', jastipItems: items }); setIsKendalaModalOpen(true); }}
+                                        onSendBillToAdmin={handleKirimTagihanKeAdmin}
+                                        onCompleteOrder={handleCompleteOrder}
+                                        onGiveUp={submitTidakBisaLanjut}
+                                        onContinueAfterIssue={handleLanjutProsesKendala}
+                                    />
                                 )}
 
                                 {/* TAB RIWAYAT */}
                                 {courierMainTab === 'riwayat' && (
-                                    <div className="flex flex-col">
-                                        <div className="sticky top-0 z-30 bg-[#eef3fb]/95 backdrop-blur-md border-b-2 border-[#004aad]/10 px-4 pt-4 pb-3 flex flex-col gap-2 mb-0 shadow-[0_2px_10px_rgba(0,74,173,0.08)]">
-                                            <div className="flex items-center gap-2 mb-1.5">
-                                                <div className="w-1 h-4 rounded-full bg-[#004aad]"></div>
-                                                <span className="text-[10px] font-bold text-[#004aad] uppercase tracking-widest">Filter Riwayat</span>
-                                            </div>
-                                            <div className="flex gap-2 w-full">
-                                                <select className="flex-1 bg-white border border-[#004aad]/20 text-gray-800 text-xs rounded-xl p-2.5 font-bold outline-none focus:border-[#004aad]" value={courierFilterPeriod} onChange={(e) => setCourierFilterPeriod(e.target.value)}>
-                                                    <option value="today">Hari Ini</option><option value="week">Minggu Ini</option><option value="month">Bulan Ini</option><option value="all">Semua Waktu</option><option value="custom">Rentang Waktu</option>
-                                                </select>
-                                                <select className="flex-1 bg-white border border-[#004aad]/20 text-gray-800 text-xs rounded-xl p-2.5 font-bold outline-none focus:border-[#004aad]" value={courierFilterService} onChange={(e) => setCourierFilterService(e.target.value)}>
-                                                    <option value="all">Semua Layanan</option>
-                                                    <option value="Belanja">Belanja</option>
-                                                    <option value="Antar Jemput">Antar Jemput</option>
-                                                    <option value="Kirim Barang">Kirim Barang</option>
-                                                </select>
-                                            </div>
-                                            {courierFilterPeriod === 'custom' && (
-                                                <div className="flex items-center gap-2">
-                                                    <input type="date" className="flex-1 bg-white border border-[#004aad]/20 text-gray-800 text-xs rounded-xl px-3 py-2.5 font-bold outline-none focus:border-[#004aad]" value={courierFilterStartDate} onChange={e => setCourierFilterStartDate(e.target.value)} />
-                                                    <span className="text-[#004aad] font-bold">–</span>
-                                                    <input type="date" className="flex-1 bg-white border border-[#004aad]/20 text-gray-800 text-xs rounded-xl px-3 py-2.5 font-bold outline-none focus:border-[#004aad]" value={courierFilterEndDate} onChange={e => setCourierFilterEndDate(e.target.value)} />
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="p-4 space-y-4">
-                                            {courierAnalytics.history.length === 0 && !loading && (
-                                                <div className="text-center p-10 bg-white rounded-2xl border border-gray-200 shadow-sm mt-4"><span className="text-5xl block mb-3 opacity-30">📭</span><span className="font-bold text-gray-500 block">Riwayat kosong untuk periode ini.</span></div>
-                                            )}
-
-                                            <div className="grid grid-cols-1 gap-4">
-                                                {(() => {
-                                                    return (<>
-                                                        {isFetchingHistory ? (
-                                                            <div className="flex flex-col items-center justify-center py-12 text-gray-500 col-span-full">
-                                                                <div className="w-10 h-10 border-4 border-gray-200 border-t-[#004aad] rounded-full animate-spin mb-4"></div>
-                                                                <p className="font-bold text-sm">Memuat Riwayat...</p>
-                                                            </div>
-                                                        ) : (
-                                                            <>
-                                                        {courierAnalytics.history.slice(0, adminHistoryLimit).map((o, idx) => {
-                                                            const isFinal = o._viewMode === 'final';
-                                                            const isNyerah = o._viewMode === 'failed';
-                                                            const ojekDataHistory = o.tipe_layanan === 'Antar Jemput' ? parseOjekDetails(o.raw_order_text) : null;
-                                                            const kirimDataHistory = o.tipe_layanan === 'Kirim Barang' ? parseKirimDetails(o.raw_order_text) : null;
-                                                            let statusLabel = '';
-                                                            let statusColor = '';
-
-                                                            if (isFinal && o.status === 'completed') {
-                                                                statusLabel = 'Sukses';
-                                                                statusColor = 'bg-emerald-100 text-emerald-700';
-                                                            } else if (isFinal && o.status === 'cancelled') {
-                                                                statusLabel = 'Batal';
-                                                                statusColor = 'bg-gray-100 text-gray-700';
-                                                            } else if (isNyerah) {
-                                                                statusLabel = 'Gagal (Nyerah)';
-                                                                statusColor = 'bg-orange-100 text-orange-700';
-                                                            }
-
-                                                            return (
-                                                                <div key={`${o.id}-${idx}`} className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col">
-                                                                    <div className="flex justify-between items-start mb-2 border-b border-gray-100 pb-2">
-                                                                        <span className={`text-[9px] font-bold px-2 py-1 rounded-md uppercase tracking-wider ${statusColor}`}>{statusLabel}</span>
-                                                                        <div className="text-right">
-                                                                            <span className="text-[10px] font-bold text-gray-400 block">{formatDateTime(o._actionTime)}</span>
-                                                                        </div>
-                                                                    </div>
-
-                                                                    <div className="mb-2"><ServiceBadge type={o.tipe_layanan} /></div>
-                                                                    <p className="font-bold text-gray-800 text-sm mb-1">{o.customer_name || o.customer_wa.split('-')[0]}</p>
-
-                                                                    {o.tipe_layanan === 'Belanja' && o.bill_details ? (
-                                                                        <div className="bg-blue-50 p-2.5 rounded-lg text-[10px] font-mono border border-blue-100 mb-3 whitespace-pre-wrap text-blue-800 flex-grow shadow-inner">
-                                                                            <strong className="text-blue-900 block mb-1">Rincian Belanja:</strong>{o.bill_details}
-                                                                        </div>
-                                                                    ) : o.tipe_layanan === 'Antar Jemput' && ojekDataHistory ? (
-                                                                        <div className="mb-3 space-y-1.5 flex-grow">
-                                                                            <div className="bg-blue-50 p-2 rounded-lg border border-blue-200 shadow-inner">
-                                                                                <p className="text-[9px] font-bold text-blue-800 uppercase mb-0.5">📍 Jemput</p>
-                                                                                <p className="text-[10px] text-blue-900 font-medium line-clamp-1">{ojekDataHistory.jemput}</p>
-                                                                            </div>
-                                                                            <div className="bg-emerald-50 p-2 rounded-lg border border-emerald-200 shadow-inner">
-                                                                                <p className="text-[9px] font-bold text-emerald-800 uppercase mb-0.5">🏁 Tujuan</p>
-                                                                                <p className="text-[10px] text-emerald-900 font-medium line-clamp-1">{ojekDataHistory.tujuan}</p>
-                                                                            </div>
-                                                                        </div>
-                                                                    ) : o.tipe_layanan === 'Kirim Barang' && kirimDataHistory ? (
-                                                                        <div className="mb-3 space-y-1.5 flex-grow">
-                                                                            <div className="bg-gray-100 p-2 rounded-lg border border-gray-200 text-center shadow-inner">
-                                                                                <p className="text-[9px] font-bold text-gray-500 uppercase mb-0.5">📦 Barang</p>
-                                                                                <p className="text-[10px] font-bold text-gray-800 line-clamp-1">{kirimDataHistory.barang}</p>
-                                                                            </div>
-                                                                            <div className="flex gap-1.5">
-                                                                                <div className="bg-blue-50 p-2 rounded-lg border border-blue-200 flex-1 shadow-inner">
-                                                                                    <p className="text-[9px] font-bold text-blue-800 uppercase mb-0.5">📍 Ambil</p>
-                                                                                    <p className="text-[10px] text-blue-900 font-medium line-clamp-1">{kirimDataHistory.ambil}</p>
-                                                                                </div>
-                                                                                <div className="bg-emerald-50 p-2 rounded-lg border border-emerald-200 flex-1 shadow-inner">
-                                                                                    <p className="text-[9px] font-bold text-emerald-800 uppercase mb-0.5">🏁 Antar</p>
-                                                                                    <p className="text-[10px] text-emerald-900 font-medium line-clamp-1">{kirimDataHistory.tujuan}</p>
-                                                                                </div>
-                                                                            </div>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div className="bg-gray-50 p-2.5 rounded-lg text-[10px] font-mono border border-gray-100 mb-3 flex-grow line-clamp-3 whitespace-pre-wrap shadow-inner">{o.raw_order_text}</div>
-                                                                    )}
-
-                                                                    {isFinal && o.status === 'cancelled' && (
-                                                                        <div className="bg-red-50 p-2 rounded text-[9px] text-red-700 border border-red-100 mb-2 italic line-clamp-2">
-                                                                            <strong>Alasan Batal:</strong> {o.kendala_info || '-'}
-                                                                        </div>
-                                                                    )}
-                                                                    {isNyerah && (
-                                                                        <div className="bg-orange-50 p-2 rounded text-[9px] text-orange-700 border border-orange-100 mb-2">
-                                                                            <strong>Alasan Nyerah:</strong> {o._failedReason || '-'}
-                                                                        </div>
-                                                                    )}
-
-                                                                    {isFinal && o.status === 'completed' && (
-                                                                        <div className="flex flex-col gap-1.5 mt-2 pt-2 border-t border-gray-100">
-                                                                            <div className="flex justify-between items-center text-[10px] font-bold">
-                                                                                <span className="text-gray-500">⏱️ Durasi Pengerjaan:</span>
-                                                                                <span className="text-gray-800 bg-gray-100 px-2 py-0.5 rounded notranslate">{calculateDuration(o.dispatched_at, o.completed_at)}</span>
-                                                                            </div>
-                                                                            {o.tipe_layanan === 'Belanja' && (
-                                                                                <div className="flex justify-between items-center text-[10px] font-bold">
-                                                                                    <span className="text-gray-500">Total Belanja (Talangan):</span>
-                                                                                    <span className="text-red-500 text-sm notranslate">Rp {parseInt(o.total_price || 0).toLocaleString('id-ID')}</span>
-                                                                                </div>
-                                                                            )}
-                                                                            <div className="flex justify-between items-center text-[10px] font-bold">
-                                                                                <span className="text-gray-500">Ongkir/Jasa (Diterima):</span>
-                                                                                <span className="text-emerald-600 text-sm notranslate">Rp {parseInt(o.delivery_fee || 0).toLocaleString('id-ID')}</span>
-                                                                            </div>
-                                                                            
-                                                                            {orderRatings[o.id] && (
-                                                                                <div className="mt-2 pt-2 border-t border-gray-100">
-                                                                                    <div className="flex items-center gap-1 mb-1.5">
-                                                                                        <span className="text-[10px] font-bold text-gray-500 mr-1">Rating Customer:</span>
-                                                                                        <span className="text-yellow-400 text-xs">{"⭐".repeat(orderRatings[o.id].rating)}</span>
-                                                                                        <span className="text-gray-300 text-xs">{"⭐".repeat(5 - orderRatings[o.id].rating)}</span>
-                                                                                    </div>
-                                                                                    {orderRatings[o.id].review && (
-                                                                                        <details className="text-[10px] text-gray-600 bg-gray-50 rounded border border-gray-100 group transition-all">
-                                                                                            <summary className="cursor-pointer font-medium text-[#004aad] hover:bg-blue-50 p-2 outline-none select-none list-none relative flex justify-between items-center">
-                                                                                                <span><span className="group-open:hidden">Lihat</span><span className="hidden group-open:inline">Tutup</span> Ulasan</span>
-                                                                                                <span className="text-xs group-open:rotate-180 transition-transform">▼</span>
-                                                                                            </summary>
-                                                                                            <div className="p-2 pt-1 italic border-t border-gray-100">"{orderRatings[o.id].review}"</div>
-                                                                                        </details>
-                                                                                    )}
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                            )
-                                                        })}
-                                                            </>
-                                                        )}
-                                                    </>)
-                                                })()}
-                                            </div>
-
-                                            {courierAnalytics.history.length > adminHistoryLimit ? (
-                                                <div className="flex flex-col items-center mt-6 mb-10 gap-3">
-                                                    <button onClick={() => setAdminHistoryLimit(prev => prev + 20)} className="bg-white text-[#004aad] px-6 py-2.5 rounded-xl font-bold shadow-sm border border-[#004aad] hover:bg-blue-50 transition w-full max-w-sm">
-                                                        Tampilkan Lebih Banyak ({courierAnalytics.history.length - adminHistoryLimit} tersisa)
-                                                    </button>
-                                                    <button onClick={fetchAllHistoricalOrders} disabled={loading} className="text-gray-400 text-xs font-semibold hover:text-gray-600 transition underline">
-                                                        Tarik Data Lawas (Database)
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <div className="flex justify-center mt-6 mb-10">
-                                                    <button onClick={fetchAllHistoricalOrders} disabled={loading} className="text-gray-400 text-xs font-semibold hover:text-gray-600 transition underline">
-                                                        Tarik Data Lawas (Database)
-                                                    </button>
-                                                </div>
-                                            )}
-                                        </div>{/* end p-4 content */}
-                                    </div>
+                                    <CourierRiwayatTab
+                                        courierFilterPeriod={courierFilterPeriod}
+                                        setCourierFilterPeriod={setCourierFilterPeriod}
+                                        courierFilterService={courierFilterService}
+                                        setCourierFilterService={setCourierFilterService}
+                                        courierFilterStartDate={courierFilterStartDate}
+                                        setCourierFilterStartDate={setCourierFilterStartDate}
+                                        courierFilterEndDate={courierFilterEndDate}
+                                        setCourierFilterEndDate={setCourierFilterEndDate}
+                                        courierAnalytics={courierAnalytics}
+                                        adminHistoryLimit={adminHistoryLimit}
+                                        setAdminHistoryLimit={setAdminHistoryLimit}
+                                        isFetchingHistory={isFetchingHistory}
+                                        loading={loading}
+                                        orderRatings={orderRatings}
+                                        setLightboxImg={setLightboxImg}
+                                        onFetchAllHistoricalOrders={fetchAllHistoricalOrders}
+                                    />
                                 )}
 
                                 {/* TAB ANALITIK */}
                                 {courierMainTab === 'analitik' && (
-                                    <div className="flex flex-col">
-                                        <div className="sticky top-0 z-30 bg-[#eef3fb]/95 backdrop-blur-md border-b-2 border-[#004aad]/10 px-4 pt-4 pb-3 flex flex-col gap-2 mb-0 shadow-[0_2px_10px_rgba(0,74,173,0.08)]">
-                                            <div className="flex items-center gap-2 mb-1.5">
-                                                <div className="w-1 h-4 rounded-full bg-[#004aad]"></div>
-                                                <span className="text-[10px] font-bold text-[#004aad] uppercase tracking-widest">Filter Analitik</span>
-                                            </div>
-                                            <div className="flex gap-2 w-full">
-                                                <select className="flex-1 bg-white border border-[#004aad]/20 text-gray-800 text-xs rounded-xl p-2.5 font-bold outline-none focus:border-[#004aad]" value={courierFilterPeriod} onChange={(e) => setCourierFilterPeriod(e.target.value)}>
-                                                    <option value="today">Hari Ini</option><option value="week">Minggu Ini</option><option value="month">Bulan Ini</option><option value="all">Semua Waktu</option><option value="custom">Rentang Waktu</option>
-                                                </select>
-                                                <select className="flex-1 bg-white border border-[#004aad]/20 text-gray-800 text-xs rounded-xl p-2.5 font-bold outline-none focus:border-[#004aad]" value={courierFilterService} onChange={(e) => setCourierFilterService(e.target.value)}>
-                                                    <option value="all">Semua Layanan</option>
-                                                    <option value="Belanja">Belanja</option>
-                                                    <option value="Antar Jemput">Antar Jemput</option>
-                                                    <option value="Kirim Barang">Kirim Barang</option>
-                                                </select>
-                                            </div>
-                                            {courierFilterPeriod === 'custom' && (
-                                                <div className="flex items-center gap-2">
-                                                    <input type="date" className="flex-1 bg-white border border-[#004aad]/20 text-gray-800 text-xs rounded-xl px-3 py-2.5 font-bold outline-none focus:border-[#004aad]" value={courierFilterStartDate} onChange={e => setCourierFilterStartDate(e.target.value)} />
-                                                    <span className="text-[#004aad] font-bold">–</span>
-                                                    <input type="date" className="flex-1 bg-white border border-[#004aad]/20 text-gray-800 text-xs rounded-xl px-3 py-2.5 font-bold outline-none focus:border-[#004aad]" value={courierFilterEndDate} onChange={e => setCourierFilterEndDate(e.target.value)} />
-                                                </div>
-                                            )}
-                                        </div>
+                                    <CourierAnalitikTab
+                                        courierFilterPeriod={courierFilterPeriod}
+                                        setCourierFilterPeriod={setCourierFilterPeriod}
+                                        courierFilterService={courierFilterService}
+                                        setCourierFilterService={setCourierFilterService}
+                                        courierFilterStartDate={courierFilterStartDate}
+                                        setCourierFilterStartDate={setCourierFilterStartDate}
+                                        courierFilterEndDate={courierFilterEndDate}
+                                        setCourierFilterEndDate={setCourierFilterEndDate}
+                                        courierChartPeriod={courierChartPeriod}
+                                        setCourierChartPeriod={setCourierChartPeriod}
+                                        courierAnalytics={courierAnalytics}
+                                        courierRatingStats={courierRatingStats}
+                                        user={user}
+                                    />
+                                )}
 
-                                        <div className="p-4 space-y-4">
-                                            <div className="bg-[#004aad] text-white p-5 rounded-2xl shadow-md relative overflow-hidden">
-                                                <div className="absolute bottom-0 right-0 -mb-4 -mr-4 w-24 h-24 bg-white/10 rounded-full opacity-50 blur-xl pointer-events-none"></div>
-                                                <h3 className="text-sm font-bold mb-4 flex items-center gap-2 text-blue-100">
-                                                    💰 Laporan Keuangan
-                                                </h3>
-                                                <div className="space-y-3 relative z-10">
-                                                    <div className="flex justify-between items-end border-b border-white/20 pb-2">
-                                                        <span className="text-[11px] font-medium text-blue-200">Pendapatan Kotor</span>
-                                                        <span className="text-lg font-bold text-[#ffde59] notranslate">Rp {courierAnalytics.pendapatan.toLocaleString('id-ID')}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center">
-                                                        <span className="text-[10px] text-blue-300 flex items-center gap-1.5">
-                                                            Potongan Admin & Kas
-                                                            <span className="bg-white/20 text-white px-1.5 py-0.5 rounded text-[9px] font-bold">{courierAnalytics.potonganPersen}%</span>
-                                                        </span>
-                                                        <span className="text-[11px] font-bold text-red-300 notranslate">- Rp {courierAnalytics.potongan.toLocaleString('id-ID')}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-center border-b border-white/20 pb-3">
-                                                        <span className="text-[10px] text-blue-300">Denda Target Mingguan</span>
-                                                        <span className="text-[11px] font-bold text-red-300 notranslate">- Rp {courierAnalytics.denda.toLocaleString('id-ID')}</span>
-                                                    </div>
-                                                    <div className="flex justify-between items-end pt-1">
-                                                        <span className="text-xs font-bold text-white">Pendapatan Bersih</span>
-                                                        <span className="text-2xl font-bold text-[#ffde59] notranslate">Rp {courierAnalytics.bersih.toLocaleString('id-ID')}</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* RATING SUMMARY CARD */}
-                                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 relative overflow-hidden flex items-center justify-between">
-                                                <div className="absolute top-0 right-0 -mt-8 -mr-8 w-32 h-32 bg-yellow-50 rounded-full opacity-50 pointer-events-none"></div>
-                                                <div className="relative z-10 flex items-center gap-3">
-                                                    <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center shadow-inner">
-                                                        <span className="text-2xl">⭐</span>
-                                                    </div>
-                                                    <div>
-                                                        <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-0.5">Rating Keseluruhan</h3>
-                                                        <div className="flex items-end gap-1.5">
-                                                            <span className="text-2xl font-black text-gray-900 leading-none">{courierRatingStats[user?.id]?.average || '0.0'}</span>
-                                                            <span className="text-[10px] font-bold text-gray-400 mb-1">/ 5.0</span>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div className="relative z-10 text-right">
-                                                    <span className="bg-gray-100 text-gray-600 px-2.5 py-1 rounded-lg text-[10px] font-bold">
-                                                        {courierRatingStats[user?.id]?.count || 0} Ulasan
-                                                    </span>
-                                                </div>
-                                            </div>
-
-                                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 relative overflow-hidden">
-                                                <div className="absolute top-0 right-0 -mt-8 -mr-8 w-32 h-32 bg-blue-50 rounded-full opacity-50 pointer-events-none"></div>
-                                                <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2 relative z-10">
-                                                    <img src="/chart-icon.webp" className="w-5 h-5" alt="Icon" /> Ringkasan Performa
-                                                </h3>
-                                                <div className="grid grid-cols-2 gap-3 relative z-10">
-                                                    <div className="col-span-2 bg-emerald-50 p-3 rounded-xl border border-emerald-100 flex justify-between items-center">
-                                                        <div>
-                                                            <p className="text-[10px] uppercase font-bold text-emerald-700 mb-0.5">Sukses Diselesaikan</p>
-                                                            <p className="text-2xl font-bold text-emerald-600">{courierAnalytics.sukses}</p>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <span className="text-xl font-bold text-emerald-500">{courierAnalytics.persenSukses}%</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="bg-orange-50 p-3 rounded-xl border border-orange-100">
-                                                        <p className="text-[10px] uppercase font-bold text-orange-700 mb-0.5">Batal (Cust/Admin)</p>
-                                                        <div className="flex items-end justify-between">
-                                                            <p className="text-lg font-bold text-orange-600">{courierAnalytics.batal}</p>
-                                                            <span className="text-[10px] font-bold text-orange-500 mb-0.5">{courierAnalytics.persenBatal}%</span>
-                                                        </div>
-                                                    </div>
-                                                    <div className="bg-red-50 p-3 rounded-xl border border-red-100">
-                                                        <p className="text-[10px] uppercase font-bold text-red-700 mb-0.5">Menyerah Kendala</p>
-                                                        <div className="flex items-end justify-between">
-                                                            <p className="text-lg font-bold text-red-600">{courierAnalytics.gagal}</p>
-                                                            <span className="text-[10px] font-bold text-red-500 mb-0.5">{courierAnalytics.persenGagal}%</span>
-                                                        </div>
-                                                    </div>
-
-                                                    <div className="col-span-2 bg-gray-50 p-3 rounded-xl border border-gray-100 flex flex-col justify-center gap-1.5 mt-1">
-                                                        <p className="text-[10px] font-bold text-gray-500 uppercase mb-1">Rincian Layanan Sukses</p>
-                                                        <div className="flex justify-between items-center"><span className="text-[10px] font-bold text-gray-600">🛒 Belanja</span> <span className="text-[10px] font-bold text-gray-600">{courierAnalytics.belanjaSks}</span></div>
-                                                        <div className="flex justify-between items-center"><span className="text-[10px] font-bold text-gray-600">🛵 Ojek</span> <span className="text-[10px] font-bold text-gray-600">{courierAnalytics.ojekSks}</span></div>
-                                                        <div className="flex justify-between items-center"><span className="text-[10px] font-bold text-gray-600">📦 Kirim Barang</span> <span className="text-[10px] font-bold text-gray-600">{courierAnalytics.kirimSks}</span></div>
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200">
-                                                <div className="flex justify-between items-center mb-4">
-                                                    <h3 className="text-sm font-bold text-gray-900">Tren Performa</h3>
-                                                    <select className="bg-gray-50 border border-gray-200 text-gray-700 text-[10px] font-bold rounded-lg px-2 py-1 outline-none focus:border-[#004aad]" value={courierChartPeriod} onChange={(e) => setCourierChartPeriod(e.target.value)}>
-                                                        <option value="daily">Harian</option>
-                                                        <option value="weekly">Mingguan</option>
-                                                        <option value="monthly">Bulanan</option>
-                                                        <option value="yearly">Tahunan</option>
-                                                    </select>
-                                                </div>
-                                                <div className="h-48 w-full">
-                                                    {courierAnalytics.trendDataTime && courierAnalytics.trendDataTime.length > 0 ? (
-                                                        <ResponsiveContainer width="100%" height="100%">
-                                                            <LineChart data={courierAnalytics.trendDataTime} margin={{ top: 5, right: 20, left: -20, bottom: 5 }}>
-                                                                <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
-                                                                <XAxis dataKey="timeLabel" tick={{ fontSize: 9, fill: '#6b7280' }} axisLine={false} tickLine={false} />
-                                                                <YAxis tick={{ fontSize: 9, fill: '#6b7280' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                                                                <RechartsTooltip
-                                                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', fontSize: '10px', fontWeight: 'bold' }}
-                                                                    cursor={{ stroke: '#e5e7eb', strokeWidth: 2 }}
-                                                                />
-                                                                <Line type="monotone" name="Sukses" dataKey="success" stroke="#059669" strokeWidth={3} dot={{ r: 4, strokeWidth: 2 }} activeDot={{ r: 6 }} />
-                                                                <Line type="monotone" name="Gagal/Batal" dataKey="failed" stroke="#ea580c" strokeWidth={2} dot={{ r: 3 }} />
-                                                            </LineChart>
-                                                        </ResponsiveContainer>
-                                                    ) : (
-                                                        <div className="h-full flex items-center justify-center text-gray-400 text-xs font-bold">Belum ada data untuk ditampilkan</div>
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                        </div>{/* end p-4 content */}
-                                    </div>
-                                )}                                {/* TAB PELANGGARAN */}
+                                {/* TAB PELANGGARAN */}
                                 {courierMainTab === 'pelanggaran' && (
-                                    <div className="pb-4">
-                                        <div className="sticky top-0 z-30 bg-[#eef3fb]/95 backdrop-blur-md border-b-2 border-[#004aad]/10 px-4 pt-4 pb-3 flex flex-col gap-2 mb-4 shadow-[0_2px_10px_rgba(0,74,173,0.08)]">
-                                            <h2 className="text-xl font-black text-[#004aad] tracking-tight">🚩 Pusat Pelanggaran</h2>
-                                            <p className="text-xs text-gray-500 font-medium">Laporan customer yang diteruskan admin ke kamu.</p>
-                                        </div>
-
-                                        <div className="px-4 space-y-4">
-                                            {/* Kartu Total Peringatan */}
-                                            <div className="bg-white rounded-2xl p-4 shadow-sm border-2 border-yellow-200 flex items-center gap-4">
-                                                <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center text-2xl shrink-0">
-                                                    ⚠️
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-0.5">Total Peringatan</p>
-                                                    <p className="text-2xl font-black text-yellow-600 leading-none">
-                                                        {courierProfile?.warning_points || 0}
-                                                        <span className="text-sm font-bold text-gray-400 ml-1">Poin</span>
-                                                    </p>
-                                                </div>
-                                            </div>
-
-
-                                            {courierReports.length === 0 ? (
-                                                <div className="text-center p-10 bg-white rounded-2xl border border-gray-200 shadow-sm">
-                                                    <span className="text-5xl block mb-3 opacity-30">✅</span>
-                                                    <span className="font-bold text-gray-500 block">Bersih! Tidak ada laporan pelanggaran.</span>
-                                                </div>
-                                            ) : (
-                                                courierReports.map(report => {
-                                                    const displayStatus = report.orders?.is_deleted ? 'resolved' : report.status;
-                                                    return (
-                                                    <div key={report.id} className="bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-red-100 relative overflow-hidden">
-                                                        <div className="absolute top-0 left-0 w-1.5 h-full bg-red-500"></div>
-                                                        <div className="flex justify-between items-start mb-3">
-                                                            <div>
-                                                                <span className="bg-red-100 text-red-700 text-[9px] font-black px-2 py-1 rounded-md uppercase tracking-wider">
-                                                                    Teguran Admin
-                                                                </span>
-                                                                <p className="text-xs text-gray-400 font-bold mt-2">
-                                                                    Diteruskan: {report.forwarded_at ? new Date(report.forwarded_at).toLocaleString('id-ID') : new Date(report.created_at).toLocaleString('id-ID')}
-                                                                </p>
-                                                                {report.order_id && (
-                                                                    <p className="text-xs text-gray-500 mt-1 font-medium">
-                                                                        Terkait Order: {' '}
-                                                                        <button 
-                                                                            onClick={() => {
-                                                                                if (report.orders) {
-                                                                                    setAttachmentOrder({
-                                                                                        id: report.orders.id,
-                                                                                        text: report.orders.raw_order_text,
-                                                                                        status: report.orders.status,
-                                                                                        kendala_info: report.orders.kendala_info
-                                                                                    });
-                                                                                    setIsAttachmentModalOpen(true);
-                                                                                }
-                                                                            }}
-                                                                            className="font-bold text-[#004aad] hover:underline"
-                                                                        >
-                                                                            #INV-{report.order_id.toString().substring(0, 8).toUpperCase()}
-                                                                        </button>
-                                                                    </p>
-                                                                )}
-                                                            </div>
-                                                            <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${displayStatus === 'resolved' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>
-                                                                {report.orders?.is_deleted ? '✅ Selesai (Dihapus)' : displayStatus === 'resolved' ? '✅ Selesai' : '⏳ Pending'}
-                                                            </span>
-                                                        </div>
-
-                                                        <div className="bg-red-50 p-3 rounded-xl mb-4 border border-red-100">
-                                                            <p className="text-xs font-bold text-red-800 mb-1">Catatan dari Admin:</p>
-                                                            <p className="text-sm text-red-900 leading-relaxed italic">"{report.admin_notes || 'Ada laporan masuk terkait pelayanan kamu. Harap segera berikan klarifikasi.'}"</p>
-                                                        </div>
-
-                                                        <div className="border-t border-gray-100 pt-4">
-                                                            <p className="text-xs font-bold text-[#004aad] mb-2">Tanggapan / Klarifikasi Kamu:</p>
-                                                            {report.target_feedback ? (
-                                                                <div className="bg-[#eef3fb] p-3 rounded-xl border border-blue-100">
-                                                                    <p className="text-sm text-gray-800">{report.target_feedback}</p>
-                                                                    <p className="text-[10px] text-gray-500 mt-2 font-medium">Dikirim: {new Date(report.feedback_at).toLocaleString('id-ID')}</p>
-                                                                </div>
-                                                            ) : (
-                                                                <form onSubmit={(e) => {
-                                                                    e.preventDefault();
-                                                                    handleSubmitFeedback(report.id, e.target.feedback.value);
-                                                                }} className="flex flex-col gap-2">
-                                                                    <textarea 
-                                                                        name="feedback" 
-                                                                        rows="3" 
-                                                                        placeholder="Tuliskan klarifikasi atau permintaan maaf kamu di sini..."
-                                                                        className="w-full text-sm p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#004aad] focus:border-[#004aad] outline-none resize-none"
-                                                                        required
-                                                                    ></textarea>
-                                                                    <button 
-                                                                        type="submit"
-                                                                        className="bg-[#004aad] text-white font-bold py-3 rounded-xl text-sm transition hover:bg-blue-800 active:scale-95 shadow-md flex items-center justify-center gap-2"
-                                                                    >
-                                                                        <span>Kirim Tanggapan</span>
-                                                                        <span>🚀</span>
-                                                                    </button>
-                                                                </form>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                )})
-                                            )}
-                                        </div>
-                                    </div>
+                                    <CourierPelanggaranTab
+                                        courierProfile={courierProfile}
+                                        courierReports={courierReports}
+                                        onSubmitFeedback={handleSubmitFeedback}
+                                        onOpenAttachment={(order) => { setAttachmentOrder(order); setIsAttachmentModalOpen(true); }}
+                                    />
                                 )}
 
                                 {/* TAB PROFIL */}
