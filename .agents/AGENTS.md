@@ -18,3 +18,10 @@ When working on the `aplikasi_customer` project, strictly follow this developmen
 - **Egress-Safe**: Haram hukumnya pakai `select('*')`. Selalu tulis nama kolom spesifik secara eksplisit. Wajib pakai limit/pagination untuk semua operasi list data.
 - **Zero-Looping**: Dilarang meletakkan query Supabase di dalam `useEffect` tanpa dependency array yang ketat.
 - **Scope Control**: Jangan merombak kodingan di luar fitur yang sedang dikerjakan. Wajib meminta approval gue per micro-task.
+
+### Arsitektur Aplikasi Internal
+- **App.jsx sebagai Controller Utama**: Dilarang keras menambahkan UI markup yang panjang ke dalam App.jsx.
+- **UI Admin**: Semua penambahan UI fitur Admin wajib dibuat di folder `src/pages/admin/`.
+- **UI Kurir**: Semua penambahan UI fitur Kurir wajib dibuat di folder `src/pages/courier/`.
+- **Modal**: Semua Modal wajib diletakkan di `src/components/modals/`.
+- **Lift-State-Stays**: Dilarang menempatkan logika Supabase Realtime di dalam komponen child. Komponen child hanya boleh menerima data dan mengirim action via props ke App.jsx.

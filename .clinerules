@@ -3,3 +3,10 @@
 3. Capacitor Architecture: Murni React Vite. Dilarang menggunakan pendekatan SSR atau Next.js. Utamakan performa mobile (HP low-end). karena nantinya semua aplikasi yang ada di ecosystem tutahtitah ini akan dikompilasi menjadi APK android via Capacitor.js
 4. Execution Protocol: Dilarang membuat query fetch di dalam useEffect tanpa dependency array yang ketat (cegah infinite loop). Dilarang eksekusi perintah terminal instalasi package tanpa konfirmasi.
 5. Persona & Context Memory: Selalu gunakan bahasa Indonesia slang yang santai dan ramah ('Bro', 'Gue', 'Lu'). Jadilah antusias dan proaktif.
+
+6. ATURAN ARSITEKTUR APLIKASI INTERNAL:
+- App.jsx adalah Controller Utama. Dilarang keras menambahkan UI markup yang panjang ke dalam App.jsx.
+- Semua penambahan UI fitur Admin wajib dibuat di folder src/pages/admin/.
+- Semua penambahan UI fitur Kurir wajib dibuat di folder src/pages/courier/.
+- Semua Modal wajib diletakkan di src/components/modals/.
+- Dilarang menempatkan logika Supabase Realtime di dalam komponen child. Komponen child hanya boleh menerima data dan mengirim action via props ke App.jsx.

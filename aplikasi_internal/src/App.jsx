@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 // ✅ [TUGAS 1] Import Supabase dari npm (menggantikan CDN jsdelivr)
 import { supabase, createTempSupabaseClient } from "./lib/supabase";
 // ✅ [TUGAS 1] Import Firebase dari lib (menggantikan hardcoded config)
@@ -30,6 +30,9 @@ import ResetPinModal from "./components/modals/ResetPinModal";
 import EditOngkirModal from "./components/modals/EditOngkirModal";
 import AdminNav from "./components/admin/AdminNav";
 import CourierNav from "./components/courier/CourierNav";
+import InternalChatList from "./components/chat/InternalChatList";
+import InternalChatRoom from "./components/chat/InternalChatRoom";
+import useLiveChat from "./hooks/useLiveChat";
 // ✅ [LEVEL 2 #7] Halaman Login di-extract ke pages/
 import LoginPage from "./pages/LoginPage";
 // ✅ [LEVEL 2 #8] Tab Profil Kurir di-extract ke pages/courier/
@@ -1773,6 +1776,8 @@ export default function App() {
     }, [allOrders]);
     // [ServiceBadge, SimpleTooltip, CustomCourierSelect dipindahkan ke src/components/]
 
+    const chatData = useLiveChat(user);
+
     if (!user) {
         return (
             <LoginPage
@@ -1900,10 +1905,10 @@ export default function App() {
                 {/* ADMIN VIEW */}
                 {/* ===================================== */}
                 {user.role === "admin" && (
-                    <div className="max-w-7xl mx-auto pb-20 md:pb-0">
-                        <AdminNav adminMainTab={adminMainTab} setAdminMainTab={setAdminMainTab} />
+                    <div className="max-w-7xl mx-auto pb-20 md:pb-0 h-full flex flex-col">
+                        <AdminNav adminMainTab={adminMainTab} setAdminMainTab={setAdminMainTab} unreadChatCount={chatData.unreadCount} />
 
-                        <div className="p-4 sm:p-6">
+                        <div className="p-4 sm:p-6 flex-1 relative">
 
 
                             {/* TAB HRD / MANAJEMEN TIM KHUSUS ADMIN */}
@@ -2032,6 +2037,46 @@ export default function App() {
                                 />
                             )}
 
+                            {/* TAB CHAT ADMIN */}
+                            {adminMainTab === 'chat' && (
+                                <div className="absolute inset-0 bg-white md:rounded-2xl md:shadow-sm md:border md:border-gray-200 overflow-hidden md:m-4 flex flex-col h-[calc(100vh-140px)]">
+                                    {chatData.activeChatId ? (
+                                        <InternalChatRoom
+                                            currentUser={user}
+                                            participantName={chatData.chats.find(c => c.id === chatData.activeChatId)?.displayName}
+                                            participantAvatar={chatData.chats.find(c => c.id === chatData.activeChatId)?.displayAvatar}
+                                            participantSubtitle={chatData.chats.find(c => c.id === chatData.activeChatId)?.displaySubtitle}
+                                            messages={chatData.messages}
+                                            loading={chatData.loadingMessages}
+                                            relevantOrders={chatData.relevantOrders}
+                                            loadingOrders={chatData.loadingOrders}
+                                            isChatClosed={false}
+                                            isUploading={false}
+                                            onBack={() => chatData.setActiveChatId(null)}
+                                            onSendMessage={chatData.handleSendMessage}
+                                            onDeleteMessage={chatData.handleDeleteMessage}
+                                            onUploadImage={chatData.handleUploadImage}
+                                            onOpenOrderPicker={() => {}}
+                                            onCloseOrderPicker={() => {}}
+                                        />
+                                    ) : (
+                                        <InternalChatList
+                                            currentUser={user}
+                                            chats={chatData.chats}
+                                            contacts={chatData.contacts}
+                                            loading={chatData.loadingChats}
+                                            loadingContacts={chatData.loadingContacts}
+                                            onOpenChat={chatData.setActiveChatId}
+                                            onFetchContacts={chatData.fetchContacts}
+                                            onStartNewChat={chatData.handleStartNewChat}
+                                            onDeleteChat={chatData.handleDeleteChat}
+                                            onDeleteAllChats={chatData.handleDeleteAllChats}
+                                            onMarkAsRead={chatData.handleMarkAsRead}
+                                        />
+                                    )}
+                                </div>
+                            )}
+
                         </div>
                     </div>
                 )}
@@ -2066,10 +2111,11 @@ export default function App() {
                                 setCourierMainTab={setCourierMainTab}
                                 activeOrdersCount={courierActiveOrders.length}
                                 forwardedReportsCount={courierReports.filter(r => r.status === 'forwarded').length}
+                                unreadChatCount={chatData.unreadCount}
                             />
 
                             {/* ── MAIN CONTENT AREA ── */}
-                            <div className="flex-1 min-w-0">
+                            <div className="flex-1 min-w-0 relative">
 
                                 {/* TAB TUGAS */}
                                 {courierMainTab === 'tugas' && (
@@ -2155,6 +2201,46 @@ export default function App() {
                                         onSave={saveCourierProfile}
                                         handleLogout={handleLogout}
                                     />
+                                )}
+
+                                {/* TAB CHAT KURIR */}
+                                {courierMainTab === 'chat' && (
+                                    <div className="absolute inset-0 bg-white md:rounded-2xl md:shadow-sm md:border md:border-gray-200 overflow-hidden md:m-4 flex flex-col h-[calc(100vh-140px)]">
+                                        {chatData.activeChatId ? (
+                                            <InternalChatRoom
+                                                currentUser={user}
+                                                participantName={chatData.chats.find(c => c.id === chatData.activeChatId)?.displayName}
+                                                participantAvatar={chatData.chats.find(c => c.id === chatData.activeChatId)?.displayAvatar}
+                                                participantSubtitle={chatData.chats.find(c => c.id === chatData.activeChatId)?.displaySubtitle}
+                                                messages={chatData.messages}
+                                                loading={chatData.loadingMessages}
+                                                relevantOrders={chatData.relevantOrders}
+                                                loadingOrders={chatData.loadingOrders}
+                                                isChatClosed={false}
+                                                isUploading={false}
+                                                onBack={() => chatData.setActiveChatId(null)}
+                                                onSendMessage={chatData.handleSendMessage}
+                                                onDeleteMessage={chatData.handleDeleteMessage}
+                                                onUploadImage={chatData.handleUploadImage}
+                                                onOpenOrderPicker={() => {}}
+                                                onCloseOrderPicker={() => {}}
+                                            />
+                                        ) : (
+                                            <InternalChatList
+                                                currentUser={user}
+                                                chats={chatData.chats}
+                                                contacts={chatData.contacts}
+                                                loading={chatData.loadingChats}
+                                                loadingContacts={chatData.loadingContacts}
+                                                onOpenChat={chatData.setActiveChatId}
+                                                onFetchContacts={chatData.fetchContacts}
+                                                onStartNewChat={chatData.handleStartNewChat}
+                                                onDeleteChat={chatData.handleDeleteChat}
+                                                onDeleteAllChats={chatData.handleDeleteAllChats}
+                                                onMarkAsRead={chatData.handleMarkAsRead}
+                                            />
+                                        )}
+                                    </div>
                                 )}
 
 

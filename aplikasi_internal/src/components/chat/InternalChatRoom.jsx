@@ -1,14 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { supabase } from '../../lib/supabase';
-import { compressImage } from '../../utils/compressImage';
 import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Receipt, X, Lock, ChevronRight, Copy, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
 
 dayjs.locale('id');
-
-const DUMMY_ADMIN_ID = '00000000-0000-0000-0000-000000000000';
 
 const formatDateGroup = (dateString) => {
   if (!dateString) return 'Hari ini';
@@ -93,20 +89,27 @@ function MessageBubble({ msg, isMine, currentUser, onLongPress }) {
   );
 }
 
-export default function InternalChatRoom({ chatId, currentUser, onBack, defaultOrderId }) {
-  const [messages, setMessages] = useState([]);
+export default function InternalChatRoom({ 
+  currentUser,
+  participantName,
+  participantAvatar,
+  participantSubtitle,
+  messages = [],
+  loading = false,
+  isChatClosed = false,
+  isUploading = false,
+  showOrderModal = false,
+  relevantOrders = [],
+  loadingOrders = false,
+  onBack,
+  onSendMessage,
+  onDeleteMessage,
+  onUploadImage,
+  onOpenOrderPicker,
+  onCloseOrderPicker
+}) {
   const [newMessage, setNewMessage] = useState('');
-  const [chatInfo, setChatInfo] = useState(null);
-  const [participantName, setParticipantName] = useState('');
-  const [participantAvatar, setParticipantAvatar] = useState(null);
-  const [participantSubtitle, setParticipantSubtitle] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [isChatClosed, setIsChatClosed] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
-  const [showOrderModal, setShowOrderModal] = useState(false);
-  const [relevantOrders, setRelevantOrders] = useState([]);
-  const [loadingOrders, setLoadingOrders] = useState(false);
   const [stagedAttachment, setStagedAttachment] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
 
@@ -117,213 +120,35 @@ export default function InternalChatRoom({ chatId, currentUser, onBack, defaultO
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
 
   useEffect(() => {
-    if (chatId && currentUser) initChat();
-  }, [chatId, currentUser]);
+    scrollToBottom();
+  }, [messages]);
 
-  const initChat = async () => {
-    setLoading(true);
-    try {
-      // Fetch chat info
-      const { data: chatData, error } = await supabase.from('chats').select('*').eq('id', chatId).single();
-      if (error) throw error;
-      setChatInfo(chatData);
-
-      // Determine participant info based on chat_type
-      await resolveParticipantInfo(chatData);
-
-      // Check if chat should be closed (for courier chats with order)
-      if (chatData.order_id && currentUser.role === 'courier') {
-        const { data: orderData } = await supabase.from('orders').select('status').eq('id', chatData.order_id).maybeSingle();
-        if (orderData && ['completed', 'cancelled', 'rejected'].includes(orderData.status)) {
-          setIsChatClosed(true);
-        }
-      }
-
-      // Fetch messages
-      const { data: msgData } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('chat_id', chatId)
-        .eq('is_deleted_by_participant', false)
-        .order('created_at', { ascending: true });
-
-      if (msgData) setMessages(msgData);
-      setLoading(false);
-      setTimeout(scrollToBottom, 150);
-
-      // Mark unread as read — gunakan sender_type bukan sender_id
-      // karena sender_id bisa berupa auth_id (customer) atau employee_id (tergantung pengirim)
-      const senderTypesToRead = currentUser.role === 'admin'
-        ? ['customer', 'merchant'] // Admin hanya perlu baca pesan dari customer/merchant
-        : ['customer'];             // Kurir hanya perlu baca pesan dari customer
-
-      const { error: markReadErr } = await supabase.from('messages')
-        .update({ is_read: true })
-        .eq('chat_id', chatId)
-        .in('sender_type', senderTypesToRead)
-        .eq('is_read', false);
-
-      if (!markReadErr) {
-        // Update local state agar UI langsung reflect is_read tanpa tunggu realtime
-        setMessages(prev => prev.map(m =>
-          senderTypesToRead.includes(m.sender_type) ? { ...m, is_read: true } : m
-        ));
-      }
-
-    } catch (err) {
-      console.error('InternalChatRoom init error:', err);
-      toast.error('Gagal memuat chat');
-      setLoading(false);
-    }
-  };
-
-  const resolveParticipantInfo = async (chatData) => {
-    const { chat_type, participant_id, customer_id, initiator_id } = chatData;
-    if (chat_type === 'support') {
-      // Admin ↔ Customer
-      if (customer_id) {
-        const { data } = await supabase.from('customers').select('name, phone').eq('auth_id', customer_id).maybeSingle();
-        setParticipantName(data?.name || data?.phone || 'Customer');
-        setParticipantSubtitle('👤 Customer');
-      }
-    } else if (chat_type === 'employee') {
-      // Admin ↔ Kurir
-      const targetId = initiator_id === currentUser.id ? participant_id : initiator_id;
-      if (targetId && targetId !== DUMMY_ADMIN_ID) {
-        const { data } = await supabase.from('employees').select('full_name, role').eq('id', targetId).maybeSingle();
-        setParticipantName(data?.full_name || 'Karyawan');
-        setParticipantSubtitle(data?.role === 'admin' ? '👔 Admin' : '🏍 Kurir');
-      } else {
-        setParticipantName('Admin TutahTitah');
-        setParticipantSubtitle('👔 Manajemen');
-      }
-    } else if (chat_type === 'admin_merchant' || chat_type === 'courier_merchant') {
-      const { data } = await supabase.from('merchants').select('name, logo_url').eq('id', participant_id).maybeSingle();
-      setParticipantName(data?.name || 'Mitra');
-      setParticipantSubtitle('🏪 Mitra Toko');
-      if (data?.logo_url) setParticipantAvatar(data.logo_url);
-    } else if (chat_type === 'courier') {
-      // Kurir melihat chat dari customer ke dia
-      if (customer_id) {
-        const { data } = await supabase.from('customers').select('name, phone').eq('auth_id', customer_id).maybeSingle();
-        setParticipantName(data?.name || data?.phone || 'Customer');
-        setParticipantSubtitle('👤 Customer');
-      }
-    }
-  };
-
-  // Realtime subscription - INSERT (pesan baru) + UPDATE (status is_read berubah)
-  useEffect(() => {
-    if (!chatId) return;
-    const channel = supabase
-      .channel(`internal_chat_room_${chatId}`)
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}`
-      }, (payload) => {
-        setMessages(prev => {
-          if (prev.find(m => m.id === payload.new.id)) return prev;
-          return [...prev, payload.new];
-        });
-        setTimeout(scrollToBottom, 100);
-        if (payload.new.sender_id !== currentUser.id) {
-          supabase.from('messages').update({ is_read: true }).eq('id', payload.new.id).then();
-        }
-      })
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'messages', filter: `chat_id=eq.${chatId}`
-      }, (payload) => {
-        if (payload.new.is_deleted_by_participant) {
-          setMessages(prev => prev.filter(m => m.id !== payload.new.id));
-        } else {
-          // Update is_read status secara realtime (untuk ceklis 1 → ceklis 2)
-          setMessages(prev => prev.map(m => m.id === payload.new.id ? { ...m, is_read: payload.new.is_read } : m));
-        }
-      })
-      .subscribe();
-    return () => supabase.removeChannel(channel);
-  }, [chatId, currentUser]);
-
-  // Order realtime (to detect order closure for courier chats)
-  useEffect(() => {
-    if (!chatInfo?.order_id || currentUser?.role !== 'courier') return;
-    const channel = supabase
-      .channel(`internal_order_status_${chatInfo.order_id}`)
-      .on('postgres_changes', {
-        event: 'UPDATE', schema: 'public', table: 'orders', filter: `id=eq.${chatInfo.order_id}`
-      }, (payload) => {
-        if (['completed', 'cancelled', 'rejected'].includes(payload.new.status)) {
-          setIsChatClosed(true);
-        }
-      })
-      .subscribe();
-    return () => supabase.removeChannel(channel);
-  }, [chatInfo, currentUser]);
-
-  const handleSendMessage = async (e) => {
+  const handleSendMessage = (e) => {
     if (e) e.preventDefault();
     if (isChatClosed) return;
     if (!newMessage.trim() && !stagedAttachment) return;
 
-    let metadata = null;
-    if (stagedAttachment) {
-      metadata = stagedAttachment;
+    if (onSendMessage) {
+      onSendMessage(newMessage.trim(), stagedAttachment);
     }
-
-    try {
-      const { data: newMsg, error } = await supabase.from('messages').insert({
-        chat_id: chatId,
-        sender_id: currentUser.id,
-        sender_type: 'employee',
-        content: newMessage.trim() || null,
-        metadata: metadata ? JSON.stringify(metadata) : null,
-        is_read: true, // Pengirim sendiri sudah pasti 'baca' pesannya sendiri
-      }).select().single();
-
-      if (error) throw error;
-
-      setMessages(prev => {
-        // Prevent duplicate if realtime already fired
-        if (prev.find(m => m.id === newMsg.id)) return prev;
-        return [...prev, newMsg];
-      });
-      setTimeout(scrollToBottom, 50);
-
-      await supabase.from('chats').update({ updated_at: new Date().toISOString() }).eq('id', chatId);
-
-      setNewMessage('');
-      setStagedAttachment(null);
-    } catch (err) {
-      console.error(err);
-      toast.error('Gagal mengirim pesan');
-    }
+    
+    setNewMessage('');
+    setStagedAttachment(null);
   };
 
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 15 * 1024 * 1024) return toast.error('Ukuran foto maksimal 15MB');
-
-    setIsUploading(true);
     setShowAttachMenu(false);
-    const loadingToast = toast.loading('Mengompres gambar...');
-    try {
-      // Kompres gambar sebelum upload (maks 1280px, kualitas 75%, format WebP)
-      const compressed = await compressImage(file, { maxWidth: 1280, maxHeight: 1280, quality: 0.75 });
-      console.log(`Kompresi: ${(file.size / 1024).toFixed(0)}KB → ${(compressed.size / 1024).toFixed(0)}KB`);
-
-      const path = `chat_${chatId}_${Date.now()}.webp`;
-      const { error: upError } = await supabase.storage.from('chat-images').upload(path, compressed, { contentType: 'image/webp' });
-      if (upError) throw upError;
-      const { data: { publicUrl } } = supabase.storage.from('chat-images').getPublicUrl(path);
-      setStagedAttachment({ type: 'image', url: publicUrl });
-      toast.success('Foto siap dikirim', { id: loadingToast });
-    } catch (err) {
-      console.error(err);
-      toast.error('Gagal upload foto', { id: loadingToast });
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+    
+    if (onUploadImage) {
+      const attachment = await onUploadImage(file);
+      if (attachment) {
+        setStagedAttachment(attachment);
+      }
     }
+    
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleTouchStart = (msg) => {
@@ -344,65 +169,15 @@ export default function InternalChatRoom({ chatId, currentUser, onBack, defaultO
     setSelectedMessage(null);
   };
 
-  const handleDeleteMessage = async () => {
+  const handleDeleteMessage = () => {
     if (!selectedMessage) return;
-    const msgId = selectedMessage.id;
+    if (onDeleteMessage) onDeleteMessage(selectedMessage.id);
     setSelectedMessage(null);
-    const prevState = [...messages];
-    setMessages(prev => prev.filter(m => m.id !== msgId));
-    
-    // Gunakan update soft delete seperti customer app, bedanya update is_deleted_by_participant
-    const { error } = await supabase.from('messages').update({ is_deleted_by_participant: true }).eq('id', msgId);
-    if (error) {
-      toast.error('Gagal menghapus pesan dari server');
-      setMessages(prevState);
-    } else {
-      toast.success('Pesan dihapus');
-    }
   };
 
-  const handleOpenOrderPicker = async () => {
+  const handleOpenOrderPicker = () => {
     setShowAttachMenu(false);
-    setShowOrderModal(true);
-    setLoadingOrders(true);
-    try {
-      let query = supabase.from('orders').select('id, tipe_layanan, status, total_price, created_at, customer_name, customer_wa, merchants(name)').order('created_at', { ascending: false }).limit(30);
-
-      // Filter berdasarkan konteks chat
-      if (chatInfo) {
-        if (chatInfo.chat_type === 'support' && chatInfo.customer_id) {
-          // Admin → Customer: tampilkan order dari customer ini
-          // Cari customer_profile berdasarkan auth_id
-          const { data: custData } = await supabase.from('customers').select('id').eq('auth_id', chatInfo.customer_id).maybeSingle();
-          // Untuk orders, match by customer (orders punya customer_id field?)
-          // Orders menggunakan customer_wa atau customer_name — filter by participant
-        } else if (chatInfo.chat_type === 'employee') {
-          // Admin ↔ Kurir: tampilkan order yang pernah ditangani kurir
-          const targetId = chatInfo.initiator_id === currentUser.id ? chatInfo.participant_id : chatInfo.initiator_id;
-          if (targetId && targetId !== DUMMY_ADMIN_ID) {
-            query = query.eq('assigned_courier_id', targetId);
-          }
-        } else if (chatInfo.chat_type === 'admin_merchant' || chatInfo.chat_type === 'courier_merchant') {
-          // Admin/Kurir ↔ Merchant: tampilkan order dari merchant ini
-          query = query.eq('merchant_id', chatInfo.participant_id);
-        } else if (chatInfo.chat_type === 'courier') {
-          // Kurir lihat chat customer: tampilkan order yang dia handle dan berkaitan
-          if (chatInfo.order_id) {
-            query = query.eq('id', chatInfo.order_id);
-          } else {
-            query = query.eq('assigned_courier_id', currentUser.id);
-          }
-        }
-      }
-
-      const { data } = await query;
-      setRelevantOrders(data || []);
-    } catch (err) {
-      console.error(err);
-      toast.error('Gagal memuat order');
-    } finally {
-      setLoadingOrders(false);
-    }
+    if (onOpenOrderPicker) onOpenOrderPicker();
   };
 
   const handleSelectOrder = (order) => {
@@ -414,7 +189,7 @@ export default function InternalChatRoom({ chatId, currentUser, onBack, defaultO
       tipe_layanan: order.tipe_layanan,
       merchant_name: order.merchants?.name || order.customer_name || '-',
     });
-    setShowOrderModal(false);
+    if (onCloseOrderPicker) onCloseOrderPicker();
   };
 
   // Group messages by date
@@ -483,7 +258,7 @@ export default function InternalChatRoom({ chatId, currentUser, onBack, defaultO
                 </span>
               </div>
               {msgs.map(msg => {
-                const isMine = msg.sender_id === currentUser.id || (currentUser.role === 'admin' && msg.sender_id === '00000000-0000-0000-0000-000000000000');
+                const isMine = msg.sender_id === currentUser?.id || (currentUser?.role === 'admin' && msg.sender_id === '00000000-0000-0000-0000-000000000000');
                 return (
                   <MessageBubble
                     key={msg.id}
@@ -602,11 +377,11 @@ export default function InternalChatRoom({ chatId, currentUser, onBack, defaultO
 
       {/* Order Picker Modal */}
       {showOrderModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex flex-col justify-end" onClick={() => setShowOrderModal(false)}>
+        <div className="fixed inset-0 z-50 bg-black/50 flex flex-col justify-end" onClick={onCloseOrderPicker}>
           <div className="bg-white rounded-t-3xl flex flex-col max-h-[75vh]" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h3 className="font-bold text-gray-900">Pilih Invoice / Order</h3>
-              <button onClick={() => setShowOrderModal(false)} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500">
+              <button onClick={onCloseOrderPicker} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500">
                 <X size={18} />
               </button>
             </div>

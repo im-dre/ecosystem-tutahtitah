@@ -1,11 +1,12 @@
 import React from "react";
 
-const CourierNav = ({ courierMainTab, setCourierMainTab, activeOrdersCount, forwardedReportsCount }) => {
+const CourierNav = ({ courierMainTab, setCourierMainTab, activeOrdersCount, forwardedReportsCount, unreadChatCount = 0 }) => {
     const menuItems = [
         { key: 'tugas', icon: '/dekstop-icon.webp', label: 'Live Orderan', badge: activeOrdersCount },
         { key: 'riwayat', icon: '/clock-icon.webp', label: 'Riwayat Order' },
         { key: 'analitik', icon: '/chart-icon.webp', label: 'Laporan Analitik' },
         { key: 'pelanggaran', emoji: '🚩', label: 'Pelanggaran', badge: forwardedReportsCount },
+        { key: 'chat', emoji: '💬', label: 'Chat', badge: unreadChatCount },
         { key: 'profil', icon: '/avatar-icon.webp', label: 'Profil Kurir' },
     ];
 
@@ -81,6 +82,7 @@ const CourierNav = ({ courierMainTab, setCourierMainTab, activeOrdersCount, forw
                 {[{ key: 'riwayat', icon: '/clock-icon.webp', label: 'Riwayat' },
                 { key: 'analitik', icon: '/chart-icon.webp', label: 'Analitik' },
                 { key: 'pelanggaran', emoji: '🚩', label: 'Pelanggaran' },
+                { key: 'chat', emoji: '💬', label: 'Chat' },
                 { key: 'profil', icon: '/avatar-icon.webp', label: 'Profil' }].map(({ key, icon, emoji, label }) => (
                     <button key={key} onClick={() => setCourierMainTab(key)}
                         className={`relative flex flex-col items-center justify-center gap-1 py-2 font-bold text-[10px] w-full flex-1 transition-all duration-300 active:scale-95 ${courierMainTab === key ? 'text-[#004aad] -translate-y-1' : 'text-gray-400'
@@ -92,6 +94,9 @@ const CourierNav = ({ courierMainTab, setCourierMainTab, activeOrdersCount, forw
                         )}
                         {key === 'pelanggaran' && forwardedReportsCount > 0 && (
                             <span className="absolute top-1 right-1/4 translate-x-2 bg-red-500 w-2 h-2 rounded-full shadow-lg animate-pulse border-2 border-white z-10 transition-all duration-300"></span>
+                        )}
+                        {key === 'chat' && unreadChatCount > 0 && (
+                            <span className="absolute top-1 right-1/4 translate-x-2 bg-red-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow-lg border border-white animate-pulse z-10 transition-all duration-300">{unreadChatCount}</span>
                         )}
                         <span className="leading-none whitespace-nowrap">{label}</span>
                     </button>
