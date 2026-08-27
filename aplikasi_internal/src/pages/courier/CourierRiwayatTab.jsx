@@ -1,10 +1,41 @@
-import React from "react";
+import React, { useMemo } from "react";
 import ServiceBadge from "../../components/ui/ServiceBadge";
 import { calculateDuration, formatDateTime, parseJastipItemsObjects, parseJastipNote, parseKirimDetails, parseOjekDetails } from "../../utils/helpers";
 
 // [LEVEL 3 #14] Tab Riwayat Kurir di-extract dari App.jsx.
 // State filter, pagination, data riwayat, dan handler tetap di App.jsx.
-export default function CourierRiwayatTab({ courierFilterPeriod, setCourierFilterPeriod, courierFilterService, setCourierFilterService, courierFilterStartDate, setCourierFilterStartDate, courierFilterEndDate, setCourierFilterEndDate, courierAnalytics, adminHistoryLimit, setAdminHistoryLimit, isFetchingHistory, loading, orderRatings, setLightboxImg, onFetchAllHistoricalOrders }) {
+export default function CourierRiwayatTab({ courierFilterPeriod, setCourierFilterPeriod, courierFilterService, setCourierFilterService, courierFilterStartDate, setCourierFilterStartDate, courierFilterEndDate, setCourierFilterEndDate, courierHistoryOrders, user, courierHistoryLimit, setCourierHistoryLimit, isFetchingHistory, loading, orderRatings, setLightboxImg, onFetchAllHistoricalOrders }) {
+    const flattenedHistory = useMemo(() => {
+        if (!courierHistoryOrders || !user) return [];
+        const filtered = courierHistoryOrders.filter(o => {
+            if (courierFilterService !== 'all' && o.tipe_layanan !== courierFilterService) return false;
+            return true;
+        });
+
+        const arr = [];
+        filtered.forEach(o => {
+            if (o.failed_couriers && Array.isArray(o.failed_couriers)) {
+                o.failed_couriers.filter(fc => fc.id === user.id).forEach(fc => {
+                    arr.push({
+                        ...o,
+                        _viewMode: 'failed',
+                        _failedReason: fc.reason,
+                        _actionTime: fc.time || o.created_at
+                    });
+                });
+            }
+            if ((o.status === 'completed' || o.status === 'cancelled') && o.assigned_courier_id === user.id) {
+                arr.push({
+                    ...o,
+                    _viewMode: 'final',
+                    _actionTime: o.completed_at || o.created_at
+                });
+            }
+        });
+        arr.sort((a, b) => new Date(b._actionTime).getTime() - new Date(a._actionTime).getTime());
+        return arr;
+    }, [courierHistoryOrders, courierFilterService, user]);
+
     return (
 <div className="flex flex-col">
                                         <div className="sticky top-0 z-30 bg-[#eef3fb]/95 backdrop-blur-md border-b-2 border-[#004aad]/10 px-4 pt-4 pb-3 flex flex-col gap-2 mb-0 shadow-[0_2px_10px_rgba(0,74,173,0.08)]">
@@ -33,7 +64,7 @@ export default function CourierRiwayatTab({ courierFilterPeriod, setCourierFilte
                                         </div>
 
                                         <div className="p-4 space-y-4">
-                                            {courierAnalytics.history.length === 0 && !loading && (
+                                            {flattenedHistory.length === 0 && !loading && (
                                                 <div className="text-center p-10 bg-white rounded-2xl border border-gray-200 shadow-sm mt-4"><span className="text-5xl block mb-3 opacity-30">📭</span><span className="font-bold text-gray-500 block">Riwayat kosong untuk periode ini.</span></div>
                                             )}
 
@@ -47,7 +78,7 @@ export default function CourierRiwayatTab({ courierFilterPeriod, setCourierFilte
                                                             </div>
                                                         ) : (
                                                             <>
-                                                        {courierAnalytics.history.slice(0, adminHistoryLimit).map((o, idx) => {
+                                                        {flattenedHistory.slice(0, courierHistoryLimit).map((o, idx) => {
                                                             const isFinal = o._viewMode === 'final';
                                                             const isNyerah = o._viewMode === 'failed';
                                                             const ojekDataHistory = o.tipe_layanan === 'Antar Jemput' ? parseOjekDetails(o.raw_order_text) : null;
@@ -171,20 +202,15 @@ export default function CourierRiwayatTab({ courierFilterPeriod, setCourierFilte
                                                 })()}
                                             </div>
 
-                                            {courierAnalytics.history.length > adminHistoryLimit ? (
+                                            {flattenedHistory.length === courierHistoryLimit && !isFetchingHistory ? (
                                                 <div className="flex flex-col items-center mt-6 mb-10 gap-3">
-                                                    <button onClick={() => setAdminHistoryLimit(prev => prev + 20)} className="bg-white text-[#004aad] px-6 py-2.5 rounded-xl font-bold shadow-sm border border-[#004aad] hover:bg-blue-50 transition w-full max-w-sm">
-                                                        Tampilkan Lebih Banyak ({courierAnalytics.history.length - adminHistoryLimit} tersisa)
-                                                    </button>
-                                                    <button onClick={onFetchAllHistoricalOrders} disabled={loading} className="text-gray-400 text-xs font-semibold hover:text-gray-600 transition underline">
-                                                        Tarik Data Lawas (Database)
+                                                    <button onClick={() => setCourierHistoryLimit(prev => prev + 10)} className="bg-white text-[#004aad] px-6 py-2.5 rounded-xl font-bold shadow-sm border border-[#004aad] hover:bg-blue-50 transition w-full max-w-sm">
+                                                        Muat Lebih Banyak Orderan ⬇️
                                                     </button>
                                                 </div>
                                             ) : (
                                                 <div className="flex justify-center mt-6 mb-10">
-                                                    <button onClick={onFetchAllHistoricalOrders} disabled={loading} className="text-gray-400 text-xs font-semibold hover:text-gray-600 transition underline">
-                                                        Tarik Data Lawas (Database)
-                                                    </button>
+                                                    <p className="text-gray-400 text-xs font-semibold">Tidak ada orderan lebih lanjut untuk periode ini.</p>
                                                 </div>
                                             )}
                                         </div>{/* end p-4 content */}

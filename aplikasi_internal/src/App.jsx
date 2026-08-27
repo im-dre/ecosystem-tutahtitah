@@ -37,8 +37,7 @@ import useLiveChat from "./hooks/useLiveChat";
 import LoginPage from "./pages/LoginPage";
 // ✅ [LEVEL 2 #8] Tab Profil Kurir di-extract ke pages/courier/
 import CourierProfilTab from "./pages/courier/CourierProfilTab";
-// ✅ [LEVEL 2 #9] Tab Pelanggaran Kurir di-extract ke pages/courier/
-import CourierPelanggaranTab from "./pages/courier/CourierPelanggaranTab";
+// Tab Pelanggaran Kurir telah dipindah ke dalam CourierAnalitikTab
 // [LEVEL 3 #14] Tab Riwayat dan Analitik Kurir di-extract ke pages/courier/
 import CourierRiwayatTab from "./pages/courier/CourierRiwayatTab";
 import CourierAnalitikTab from "./pages/courier/CourierAnalitikTab";
@@ -108,7 +107,11 @@ export default function App() {
     const [adminChartGrouping, setAdminChartGrouping] = useState('daily');
 
     const [adminHistorySearch, setAdminHistorySearch] = useState('');
-    const [adminHistoryLimit, setAdminHistoryLimit] = useState(20);
+    const [adminHistoryLimit, setAdminHistoryLimit] = useState(10);
+    const [courierHistoryLimit, setCourierHistoryLimit] = useState(10);
+
+    const [adminAnalyticsOrders, setAdminAnalyticsOrders] = useState([]);
+    const [courierAnalyticsOrders, setCourierAnalyticsOrders] = useState([]);
 
     // === STATE PENGADUAN (LAPORAN CUSTOMER) ===
     const [reportsData, setReportsData] = useState([]);
@@ -204,13 +207,13 @@ export default function App() {
             try {
                 const { error } = await supabase
                     .from('reports')
-                    .update({ 
-                        status: 'forwarded', 
+                    .update({
+                        status: 'forwarded',
                         admin_notes: notes,
                         forwarded_at: new Date().toISOString()
                     })
                     .eq('id', report.id);
-                
+
                 if (error) throw error;
                 toast.success("Laporan berhasil diteruskan", { id: toastId });
                 fetchReportsData();
@@ -225,7 +228,7 @@ export default function App() {
         const actionLabel = action === 'suspend' ? 'Suspend Akun' : 'Jadikan Peringatan';
         const result = await Swal.fire({
             title: `${actionLabel}?`,
-            text: action === 'suspend' 
+            text: action === 'suspend'
                 ? `Apakah Anda yakin ingin MENSUSPEND ${report.target_type === 'merchant' ? 'toko/mitra' : 'kurir'} ini? Akun mereka akan dibekukan.`
                 : `Apakah Anda yakin ingin memberikan PERINGATAN kepada ${report.target_type === 'merchant' ? 'toko/mitra' : 'kurir'} ini?`,
             icon: action === 'suspend' ? 'warning' : 'question',
@@ -244,7 +247,7 @@ export default function App() {
                     .from('reports')
                     .update({ status: 'resolved', resolution_action: action })
                     .eq('id', report.id);
-                
+
                 if (reportError) throw reportError;
 
                 // Terapkan aksi ke target
@@ -265,7 +268,7 @@ export default function App() {
                 } else if (report.target_type === 'merchant') {
                     if (action === 'suspend') {
                         // Suspend toko
-                        await supabase.from('merchants').update({ 
+                        await supabase.from('merchants').update({
                             status: 'suspended',
                             alasan_suspend: 'Dilaporkan oleh customer atas pelanggaran pelayanan.'
                         }).eq('id', report.target_id);
@@ -296,7 +299,7 @@ export default function App() {
                 .from('reports')
                 .select(`
                     *,
-                    orders ( id, raw_order_text, status, kendala_info, is_deleted )
+                    orders ( id, raw_order_text, status, kendala_info, is_deleted, inputted_by )
                 `)
                 .order('created_at', { ascending: false });
             if (error) throw error;
@@ -316,7 +319,7 @@ export default function App() {
                 .from('reports')
                 .select(`
                     *,
-                    orders ( id, raw_order_text, status, kendala_info, is_deleted )
+                    orders ( id, raw_order_text, status, kendala_info, is_deleted, inputted_by )
                 `)
                 .eq('target_id', user.id)
                 .eq('target_type', 'courier')
@@ -339,7 +342,7 @@ export default function App() {
                     feedback_at: new Date().toISOString()
                 })
                 .eq('id', reportId);
-            
+
             if (error) throw error;
             toast.success("Tanggapan berhasil dikirim", { id: toastId });
             fetchCourierReportsData();
@@ -566,10 +569,10 @@ export default function App() {
         } catch (err) { console.error(err); }
     };
 
-    
+
     const toggleCourierOnlineStatus = async (currentStatus) => {
         if (!user || user.role !== 'courier') return;
-        
+
         const newStatus = !currentStatus;
 
         if (newStatus === false) {
@@ -580,7 +583,7 @@ export default function App() {
         }
 
         setCouriersList(prev => prev.map(c => c.id === user.id ? { ...c, is_online: newStatus } : c));
-        
+
         try {
             const { error } = await supabase.from('employees').update({ is_online: newStatus }).eq('id', user.id);
             if (error) throw error;
@@ -921,7 +924,7 @@ export default function App() {
     const fetchAllHistoricalOrders = async () => {
         setLoading(true);
         try {
-            const { data: ordersData } = await supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers").eq("is_deleted", false).order("created_at", { ascending: false });
+            const { data: ordersData } = await supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers, inputted_by").eq("is_deleted", false).order("created_at", { ascending: false });
             if (ordersData) setAllOrders(ordersData);
             toast.success("Berhasil memuat seluruh riwayat pesanan");
         } catch (error) {
@@ -937,13 +940,19 @@ export default function App() {
         try {
             const oneMonthAgo = new Date();
             oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-            const { data: activeOrders } = await supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers").in("status", ["pending", "processing", "hold", "waiting_customer", "searching_courier", "courier_found", "on_delivery", "picking_up", "item_ready", "delivering"]).eq("is_deleted", false).order("created_at", { ascending: false });
+            const { data: activeOrders } = await supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers, inputted_by").in("status", ["pending", "processing", "hold", "waiting_customer", "searching_courier", "courier_found", "on_delivery", "picking_up", "item_ready", "delivering"]).eq("is_deleted", false).order("created_at", { ascending: false });
             const ordersData = [...(activeOrders || [])];
             const { data: couriersData } = await supabase.from("employees").select("id, full_name, pin, role, warning_points, bank_name, account_number, bank_name_2, account_number_2, is_super_admin, is_online").eq("role", "courier");
             const { data: allEmpData } = await supabase.from("employees").select("id, full_name, role, email, phone, pin, bank_name, account_number, bank_name_2, account_number_2, warning_points, is_online, auth_id").order("role", { ascending: true });
-            const { data: customersData } = await supabase.from("customers").select("id, name, phone, address, auth_id, created_at").order("created_at", { ascending: false }).limit(3000);
-            const { data: rawRatingsData } = await supabase.from("ratings").select("id, order_id, target_id, target_type, rating, review").eq("target_type", "courier").order("created_at", { ascending: false }).limit(100);
             
+            let customersData = [];
+            if (user && (user.role === 'admin' || user.role === 'superadmin')) {
+                const { data } = await supabase.from("customers").select("id, name, phone, address, auth_id, created_at").order("created_at", { ascending: false }).limit(3000);
+                if (data) customersData = data;
+            }
+
+            const { data: rawRatingsData } = await supabase.from("ratings").select("id, order_id, target_id, target_type, rating, review").eq("target_type", "courier").order("created_at", { ascending: false }).limit(100);
+
             // Filter out ratings from soft-deleted AND hard-deleted orders manually
             let validOrderIds = new Set();
             if (rawRatingsData && rawRatingsData.length > 0) {
@@ -1003,31 +1012,31 @@ export default function App() {
     const getPeriodDateRange = (period, customStart, customEnd) => {
         const now = new Date();
         if (period === 'today') {
-            const start = new Date(now.setHours(0,0,0,0)).toISOString();
-            const end = new Date(now.setHours(23,59,59,999)).toISOString();
+            const start = new Date(now.setHours(0, 0, 0, 0)).toISOString();
+            const end = new Date(now.setHours(23, 59, 59, 999)).toISOString();
             return { start, end };
         }
         if (period === 'week') {
             const start = new Date(now);
             start.setDate(start.getDate() - 7);
-            start.setHours(0,0,0,0);
+            start.setHours(0, 0, 0, 0);
             return { start: start.toISOString(), end: null };
         }
         if (period === 'month') {
-            const start = new Date(now.getFullYear(), now.getMonth(), 1, 0,0,0,0).toISOString();
-            const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23,59,59,999).toISOString();
+            const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0).toISOString();
+            const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999).toISOString();
             return { start, end };
         }
         if (period === 'year') {
-            const start = new Date(now.getFullYear(), 0, 1, 0,0,0,0).toISOString();
-            const end = new Date(now.getFullYear(), 11, 31, 23,59,59,999).toISOString();
+            const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0).toISOString();
+            const end = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999).toISOString();
             return { start, end };
         }
         if (period === 'custom' && customStart && customEnd) {
             const start = new Date(customStart);
-            start.setHours(0,0,0,0);
+            start.setHours(0, 0, 0, 0);
             const end = new Date(customEnd);
-            end.setHours(23,59,59,999);
+            end.setHours(23, 59, 59, 999);
             return { start: start.toISOString(), end: end.toISOString() };
         }
         if (period === 'all') {
@@ -1036,18 +1045,48 @@ export default function App() {
         return { start: null, end: null };
     };
 
+    const fetchAnalyticsData = async (role, period, customStart, customEnd) => {
+        if (period === 'custom' && (!customStart || !customEnd)) return;
+        try {
+            const { start, end } = getPeriodDateRange(period, customStart, customEnd);
+            let query = supabase.from("orders").select("id, status, total_price, delivery_fee, tipe_layanan, created_at, completed_at, dispatched_at, assigned_courier_id, failed_couriers").in("status", ["completed", "cancelled", "unreachable"]).eq("is_deleted", false).order("created_at", { ascending: false });
+
+            if (start) query = query.gte("created_at", start);
+            if (end) query = query.lte("created_at", end);
+            // No limit for analytics to ensure 100% accuracy
+
+            const { data, error } = await query;
+            if (error) throw error;
+
+            if (role === 'admin') {
+                setAdminAnalyticsOrders(data || []);
+            } else {
+                setCourierAnalyticsOrders(data || []);
+            }
+        } catch (err) {
+            console.error("Error lazy loading analytics:", err);
+            toast.error("Gagal menarik data analitik.");
+        }
+    };
+
     const fetchHistoricalData = async (role, period, customStart, customEnd) => {
         if (period === 'custom' && (!customStart || !customEnd)) return;
         setIsFetchingHistory(true);
         try {
             const { start, end } = getPeriodDateRange(period, customStart, customEnd);
-            let query = supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers").in("status", ["completed", "cancelled", "unreachable"]).eq("is_deleted", false).order("created_at", { ascending: false });
-            
+            let query = supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers, inputted_by").in("status", ["completed", "cancelled", "unreachable"]).eq("is_deleted", false).order("created_at", { ascending: false });
+
             if (start) query = query.gte("created_at", start);
             if (end) query = query.lte("created_at", end);
-            
-            // Protect against infinite queries
-            query = query.limit(3000); 
+
+            // Fetch specific courier orders directly in database for precise pagination
+            if (role === 'courier' && user?.id) {
+                query = query.or(`assigned_courier_id.eq.${user.id},failed_couriers.cs.[{"id":"${user.id}"}]`);
+            }
+
+            // Dynamic limit
+            const limit = role === 'admin' ? adminHistoryLimit : courierHistoryLimit;
+            query = query.limit(limit);
 
             const { data, error } = await query;
             if (error) throw error;
@@ -1065,19 +1104,35 @@ export default function App() {
         }
     };
 
-    // Admin Lazy Load
+    // Admin Lazy Load - Riwayat
     useEffect(() => {
-        if (!user || user.role !== 'admin' && user.role !== 'superadmin') return;
-        if (adminMainTab === 'riwayat' || adminMainTab === 'analitik') {
+        if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) return;
+        if (adminMainTab === 'riwayat') {
             fetchHistoricalData('admin', adminFilterPeriod, adminFilterStartDate, adminFilterEndDate);
+        }
+    }, [adminMainTab, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, user, adminHistoryLimit]);
+
+    // Admin Lazy Load - Analitik
+    useEffect(() => {
+        if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) return;
+        if (adminMainTab === 'laporan') {
+            fetchAnalyticsData('admin', adminFilterPeriod, adminFilterStartDate, adminFilterEndDate);
         }
     }, [adminMainTab, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, user]);
 
-    // Courier Lazy Load
+    // Courier Lazy Load - Riwayat
     useEffect(() => {
         if (!user || user.role !== 'courier') return;
-        if (courierMainTab === 'riwayat' || courierMainTab === 'analitik') {
+        if (courierMainTab === 'riwayat') {
             fetchHistoricalData('courier', courierFilterPeriod, courierFilterStartDate, courierFilterEndDate);
+        }
+    }, [courierMainTab, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, user, courierHistoryLimit]);
+    
+    // Courier Lazy Load - Analitik
+    useEffect(() => {
+        if (!user || user.role !== 'courier') return;
+        if (courierMainTab === 'analitik') {
+            fetchAnalyticsData('courier', courierFilterPeriod, courierFilterStartDate, courierFilterEndDate);
         }
     }, [courierMainTab, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, user]);
     // ==========================================
@@ -1127,7 +1182,7 @@ export default function App() {
                 // --- REALTIME UPDATE UNTUK RIWAYAT / ANALITIK ---
                 if (['completed', 'cancelled', 'unreachable'].includes(newStatus)) {
                     const updateHist = (prev) => {
-                        if (!prev.find(o => o.id === p.new.id)) return [p.new, ...prev].sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+                        if (!prev.find(o => o.id === p.new.id)) return [p.new, ...prev].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
                         return prev.map(o => o.id === p.new.id ? p.new : o);
                     };
                     if (user.role === 'admin' || user.role === 'superadmin') setAdminHistoricalOrders(updateHist);
@@ -1214,7 +1269,7 @@ export default function App() {
 
     const adminAnalytics = useMemo(() => {
         try {
-            const periodOrders = adminHistoricalOrders.filter(o => isWithinPeriod(o.created_at, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate));
+            const periodOrders = adminAnalyticsOrders.filter(o => isWithinPeriod(o.created_at, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate));
             const analitikSelesai = periodOrders.filter(o => o.status === 'completed');
 
             const totalOngkirPeriode = analitikSelesai.reduce((sum, o) => sum + (parseFloat(o.delivery_fee) || 0), 0);
@@ -1315,11 +1370,11 @@ export default function App() {
         } catch (e) {
             return { periodOrders: [], analitikSelesai: [], totalOngkirPeriode: 0, hakAdminPure: 0, totalKasTermasukDenda: 0, totalHakKurirGlobal: 0, serviceData: [], trendDataTime: [], trendDataHour: [], courierPerformance: [], totalOrdersPeriod: 0, suksesOrders: 0, batalOrders: 0, gagalOrders: 0, persenSukses: 0, persenBatal: 0, persenGagal: 0, avgDurationAll: '-', avgDurationBelanja: '-', avgDurationOjek: '-', avgDurationKirim: '-', targetOrders: 0 };
         }
-    }, [adminHistoricalOrders, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, adminChartGrouping, adminProfitShare, kasShare, couriersList]);
+    }, [adminAnalyticsOrders, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, adminChartGrouping, adminProfitShare, kasShare, couriersList]);
 
     const courierAnalytics = useMemo(() => {
         try {
-            const periodOrders = courierHistoryOrders.filter(o => isWithinPeriod(o.created_at, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate) && (courierFilterService === 'all' || o.tipe_layanan === courierFilterService));
+            const periodOrders = courierAnalyticsOrders.filter(o => isWithinPeriod(o.created_at, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate) && (courierFilterService === 'all' || o.tipe_layanan === courierFilterService));
 
             // =======================================================================
             // LOGIKA BARU: MESIN PEMBELAH RIWAYAT (ACTION-BASED HISTORY)
@@ -1416,7 +1471,7 @@ export default function App() {
                 pendapatan: totalPendapatan, bersih: bersihPendapatan, potongan: (totalPendapatan * (potonganPersen / 100)), denda, talangan: totalTalanganKeluar, history: flattenedHistory, potonganPersen
             };
         } catch (e) { return { total: 0, sukses: 0, belanjaSks: 0, ojekSks: 0, kirimSks: 0, batal: 0, gagal: 0, persenSukses: 0, persenBatal: 0, persenGagal: 0, pendapatan: 0, bersih: 0, potongan: 0, denda: 0, talangan: 0, history: [], potonganPersen: 0 }; }
-    }, [courierHistoryOrders, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, courierFilterService, courierChartPeriod, adminProfitShare, kasShare, user?.id]);
+    }, [courierAnalyticsOrders, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, courierFilterService, courierChartPeriod, adminProfitShare, kasShare, user?.id]);
 
     const handleDispatch = async (orderId) => {
         const courierId = dispatchInputs[`${orderId}_courier`];
@@ -1517,7 +1572,7 @@ export default function App() {
                 }
             }
         });
-        
+
         if (text) {
             try {
                 const { error } = await supabase.from('orders').update({ is_deleted: true, kendala_info: `Dihapus Permanen: ${text}` }).eq('id', orderId);
@@ -1570,7 +1625,8 @@ export default function App() {
             const { error } = await supabase.from("orders").insert([{
                 customer_name: manualForm.name, customer_wa: manualForm.wa, customer_address: manualForm.address, raw_order_text: manualForm.text, tipe_layanan: manualForm.type, status: isDirectDispatch ? 'processing' : 'pending', total_price: 0, delivery_fee: isDirectDispatch ? parseFloat(manualForm.fee || 0) : 0,
                 image_url: uploadedImageUrls.length > 0 ? uploadedImageUrls.join(',') : null,
-                assigned_courier_id: isDirectDispatch ? manualForm.courier : null, dispatched_at: isDirectDispatch ? new Date().toISOString() : null
+                assigned_courier_id: isDirectDispatch ? manualForm.courier : null, dispatched_at: isDirectDispatch ? new Date().toISOString() : null,
+                inputted_by: user ? user.name : null
             }]);
             if (error) throw error;
 
@@ -1644,12 +1700,12 @@ export default function App() {
     const submitEditOngkirAdmin = async () => {
         const { order, newOngkir } = editOngkirModal;
         if (!newOngkir) return showNotif('Ongkir baru wajib diisi!', 'error');
-        
+
         try {
             const parsedOngkir = parseInt(newOngkir);
             const { error } = await supabase.from('orders').update({ delivery_fee: parsedOngkir }).eq('id', order.id);
             if (error) throw error;
-            
+
             setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, delivery_fee: parsedOngkir } : o));
             showNotif("Ongkir berhasil diubah admin", "success");
             setEditOngkirModal({ isOpen: false, order: null, newOngkir: '' });
@@ -1814,8 +1870,8 @@ export default function App() {
                 <p className="text-red-900/80 mb-8 max-w-sm mx-auto font-medium leading-relaxed">
                     Akses Anda ke sistem telah ditangguhkan sementara. Silakan hubungi tim Admin atau Manajemen Tutah Titah untuk informasi lebih lanjut dan proses pemulihan akun.
                 </p>
-                <button 
-                    onClick={() => supabase.auth.signOut()} 
+                <button
+                    onClick={() => supabase.auth.signOut()}
                     className="px-8 py-3.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-lg transition transform hover:scale-105 active:scale-95"
                 >
                     Keluar Aplikasi
@@ -1899,7 +1955,7 @@ export default function App() {
                 </div>
             )}
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1">
 
                 {/* ===================================== */}
                 {/* ADMIN VIEW */}
@@ -2008,6 +2064,7 @@ export default function App() {
                                     adminHistoryLimit={adminHistoryLimit}
                                     setAdminHistoryLimit={setAdminHistoryLimit}
                                     adminAnalytics={adminAnalytics}
+                                    adminHistoricalOrders={adminHistoricalOrders}
                                     couriersList={couriersList}
                                     isFetchingHistory={isFetchingHistory}
                                     orderRatings={orderRatings}
@@ -2056,8 +2113,8 @@ export default function App() {
                                             onSendMessage={chatData.handleSendMessage}
                                             onDeleteMessage={chatData.handleDeleteMessage}
                                             onUploadImage={chatData.handleUploadImage}
-                                            onOpenOrderPicker={() => {}}
-                                            onCloseOrderPicker={() => {}}
+                                            onOpenOrderPicker={() => { }}
+                                            onCloseOrderPicker={() => { }}
                                         />
                                     ) : (
                                         <InternalChatList
@@ -2153,9 +2210,10 @@ export default function App() {
                                         setCourierFilterStartDate={setCourierFilterStartDate}
                                         courierFilterEndDate={courierFilterEndDate}
                                         setCourierFilterEndDate={setCourierFilterEndDate}
-                                        courierAnalytics={courierAnalytics}
-                                        adminHistoryLimit={adminHistoryLimit}
-                                        setAdminHistoryLimit={setAdminHistoryLimit}
+                                        courierHistoryOrders={courierHistoryOrders}
+                                        user={user}
+                                        courierHistoryLimit={courierHistoryLimit}
+                                        setCourierHistoryLimit={setCourierHistoryLimit}
                                         isFetchingHistory={isFetchingHistory}
                                         loading={loading}
                                         orderRatings={orderRatings}
@@ -2164,7 +2222,7 @@ export default function App() {
                                     />
                                 )}
 
-                                {/* TAB ANALITIK */}
+                                {/* TAB ANALITIK (sekarang termasuk Pelanggaran) */}
                                 {courierMainTab === 'analitik' && (
                                     <CourierAnalitikTab
                                         courierFilterPeriod={courierFilterPeriod}
@@ -2180,12 +2238,6 @@ export default function App() {
                                         courierAnalytics={courierAnalytics}
                                         courierRatingStats={courierRatingStats}
                                         user={user}
-                                    />
-                                )}
-
-                                {/* TAB PELANGGARAN */}
-                                {courierMainTab === 'pelanggaran' && (
-                                    <CourierPelanggaranTab
                                         courierProfile={courierProfile}
                                         courierReports={courierReports}
                                         onSubmitFeedback={handleSubmitFeedback}
@@ -2222,8 +2274,8 @@ export default function App() {
                                                 onSendMessage={chatData.handleSendMessage}
                                                 onDeleteMessage={chatData.handleDeleteMessage}
                                                 onUploadImage={chatData.handleUploadImage}
-                                                onOpenOrderPicker={() => {}}
-                                                onCloseOrderPicker={() => {}}
+                                                onOpenOrderPicker={() => { }}
+                                                onCloseOrderPicker={() => { }}
                                             />
                                         ) : (
                                             <InternalChatList

@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import ServiceBadge from "../../components/ui/ServiceBadge";
 import { formatDateTime, parseJastipItemsObjects, parseJastipNote, parseKirimDetails, parseOjekDetails } from "../../utils/helpers";
 
@@ -28,13 +28,36 @@ export default function CourierTugasAktifTab({
     return (
                                     <div className="space-y-4 pt-4 md:px-0">
                                         {/* Sub-Tabs Nav Courier */}
-                                        <div className="flex overflow-x-auto hide-scrollbar gap-5 px-4 md:px-0 border-b border-gray-200 mb-2">
-                                            {['Semua', 'Diproses', 'Menuju Lokasi', 'Kendala'].map(sub => (
-                                                <button key={sub} onClick={() => setCourierTugasSubTab(sub)}
-                                                    className={`whitespace-nowrap pb-2.5 text-[11px] uppercase tracking-wide font-bold transition-all border-b-[3px] ${courierTugasSubTab === sub ? 'text-[#004aad] border-[#004aad]' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
-                                                    {sub}
-                                                </button>
-                                            ))}
+                                        <div className="flex overflow-x-auto hide-scrollbar gap-5 px-4 md:px-0 border-b border-gray-200 mb-2 sticky top-0 z-30 bg-[#eef3fb] pt-3">
+                                            {['Semua', 'Diproses', 'Menuju Lokasi', 'Kendala'].map(sub => {
+                                                let count = 0;
+                                                if (sub === 'Semua') {
+                                                    count = courierActiveOrders.length;
+                                                } else {
+                                                    count = courierActiveOrders.filter(o => {
+                                                        const isHold = o.status === 'hold';
+                                                        const isDelivering = o.status === 'delivering';
+                                                        const isProcessing = o.status === 'processing';
+                                                        
+                                                        if (sub === 'Diproses') return isProcessing;
+                                                        if (sub === 'Menuju Lokasi') return isDelivering;
+                                                        if (sub === 'Kendala') return isHold;
+                                                        return false;
+                                                    }).length;
+                                                }
+
+                                                return (
+                                                    <button key={sub} onClick={() => setCourierTugasSubTab(sub)}
+                                                        className={`flex items-center whitespace-nowrap pb-2.5 text-[11px] uppercase tracking-wide font-bold transition-all border-b-[3px] ${courierTugasSubTab === sub ? 'text-[#004aad] border-[#004aad]' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
+                                                        {sub}
+                                                        {count > 0 && (
+                                                            <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1.5">
+                                                                {count}
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
 
                                         {courierActiveOrders.length === 0 && !loading && (
@@ -73,6 +96,12 @@ export default function CourierTugasAktifTab({
                                                         <span className="text-[10px] font-bold text-gray-400 bg-gray-50 px-2 py-0.5 rounded">{formatDateTime(task.created_at)}</span>
                                                     </div>
 
+                                                    {task.inputted_by && (
+                                                        <div className="flex items-center gap-1 mb-1.5 text-[10px] text-gray-500 font-medium">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 256 256" fill="currentColor"><path d="M230.92,212c-15.23-26.33-38.7-45.21-66.09-54.16a72,72,0,1,0-73.66,0C63.78,166.78,40.31,185.66,25.08,212a8,8,0,1,0,13.85,8c18.84-32.56,52.14-52,89.07-52s70.23,19.44,89.07,52a8,8,0,1,0,13.85-8ZM72,96a56,56,0,1,1,56,56A56.06,56.06,0,0,1,72,96Z"></path></svg>
+                                                            Diinput oleh: {task.inputted_by}
+                                                        </div>
+                                                    )}
                                                     <div className="mb-2"><ServiceBadge type={task.tipe_layanan} /></div>
                                                     <p className="font-bold text-gray-900 text-sm mb-2">{task.customer_name || task.customer_wa.split('-')[0]}</p>
                                                     <div className="bg-gray-50 p-2 rounded-lg border border-gray-100 mb-3 text-xs flex items-start gap-1.5 shadow-inner">

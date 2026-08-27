@@ -6,9 +6,9 @@ import { formatDateTime, getWaLink } from "../../utils/helpers";
 // [LEVEL 4 #15] UI operasional admin. State global, realtime, dan mutasi data tetap di App.jsx.
 export default function AdminOperasionalTab({ adminOperasionalTab, setAdminOperasionalTab, adminOperasionalSubTab, setAdminOperasionalSubTab, adminPendingOrders, adminProcessingOrders, dispatchInputs, setDispatchInputs, couriersList, activeCourierCounts, courierRatingStats, isCustomOrderOpen, isTogglingCustomOrder, customOrderMerchantId, onCopyFormat, onToggleCustomOrder, onSetLightboxImg, onDispatch, onCancelPendingOrder, onReplaceCourier, onEditOngkir, onSendBillToCustomer, onEditOrder, onOpenManualOrder }) {
   return (
-<div className="space-y-6">
+<div className="space-y-4">
     {/* QUICK ACTIONS & TOGGLES HEADER */}
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-gray-200 shadow-sm">
+    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 md:rounded-2xl border-y md:border border-x-0 md:border-x border-gray-200 shadow-none md:shadow-sm -mx-4 md:mx-0">
         {/* Copy Formats */}
         <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mr-1 shrink-0">Copy Format:</span>
@@ -59,7 +59,13 @@ export default function AdminOperasionalTab({ adminOperasionalTab, setAdminOpera
             {adminPendingOrders.map(o => (
                 <div key={o.id} className="bg-white p-5 rounded-2xl border border-gray-200 flex flex-col h-full shadow-sm hover:shadow-md transition relative">
                     <div className="absolute top-0 right-0 w-16 h-16 bg-[#004aad] opacity-5 rounded-bl-full pointer-events-none"></div>
-                    <div className="flex justify-between items-start mb-3">
+                    {o.inputted_by && (
+                        <div className="flex items-center gap-1 mb-1.5 text-[10px] text-gray-500 font-medium">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 256 256" fill="currentColor"><path d="M230.92,212c-15.23-26.33-38.7-45.21-66.09-54.16a72,72,0,1,0-73.66,0C63.78,166.78,40.31,185.66,25.08,212a8,8,0,1,0,13.85,8c18.84-32.56,52.14-52,89.07-52s70.23,19.44,89.07,52a8,8,0,1,0,13.85-8ZM72,96a56,56,0,1,1,56,56A56.06,56.06,0,0,1,72,96Z"></path></svg>
+                            Diinput oleh: {o.inputted_by}
+                        </div>
+                    )}
+                    <div className="flex justify-between items-start mb-3 relative z-10">
                         <ServiceBadge type={o.tipe_layanan} />
                         <span className="text-[10px] font-bold text-gray-400">{formatDateTime(o.created_at)}</span>
                     </div>
@@ -107,13 +113,37 @@ export default function AdminOperasionalTab({ adminOperasionalTab, setAdminOpera
     {adminOperasionalTab === 'processing' && (
         <div className="flex flex-col gap-4">
             {/* Sub-Tabs Nav Admin */}
-            <div className="flex overflow-x-auto hide-scrollbar gap-5 px-4 md:px-0 border-b border-gray-200">
-                {['Semua', 'Diproses', 'Menuju Lokasi', 'Kendala', 'Nyerah'].map(sub => (
-                    <button key={sub} onClick={() => setAdminOperasionalSubTab(sub)}
-                        className={`whitespace-nowrap pb-2.5 text-[11px] uppercase tracking-wide font-bold transition-all border-b-[3px] ${adminOperasionalSubTab === sub ? 'text-[#004aad] border-[#004aad]' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
-                        {sub}
-                    </button>
-                ))}
+            <div className="flex overflow-x-auto hide-scrollbar gap-5 px-4 md:px-0 border-b border-gray-200 sticky top-[65px] z-30 bg-gray-50 pt-3 -mx-4 md:mx-0">
+                {['Semua', 'Diproses', 'Menuju Lokasi', 'Kendala', 'Nyerah'].map(sub => {
+                    let count = 0;
+                    if (sub === 'Semua') {
+                        count = adminProcessingOrders.length;
+                    } else {
+                        count = adminProcessingOrders.filter(o => {
+                            const isHold = o.status === 'hold';
+                            const isWaiting = o.status === 'waiting_customer' || (o.failed_couriers && o.failed_couriers.length > 0 && o.status === 'processing');
+                            const isDelivering = o.status === 'delivering';
+
+                            if (sub === 'Diproses') return o.status === 'processing' && !isWaiting;
+                            if (sub === 'Menuju Lokasi') return isDelivering;
+                            if (sub === 'Kendala') return isHold;
+                            if (sub === 'Nyerah') return isWaiting;
+                            return false;
+                        }).length;
+                    }
+
+                    return (
+                        <button key={sub} onClick={() => setAdminOperasionalSubTab(sub)}
+                            className={`flex items-center whitespace-nowrap pb-2.5 text-[11px] uppercase tracking-wide font-bold transition-all border-b-[3px] ${adminOperasionalSubTab === sub ? 'text-[#004aad] border-[#004aad]' : 'text-gray-400 border-transparent hover:text-gray-600'}`}>
+                            {sub}
+                            {count > 0 && (
+                                <span className="bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-1.5">
+                                    {count}
+                                </span>
+                            )}
+                        </button>
+                    );
+                })}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 md:gap-4 -mx-4 md:mx-0">
@@ -136,7 +166,13 @@ export default function AdminOperasionalTab({ adminOperasionalTab, setAdminOpera
                     return (
                         <div key={o.id} className={`p-4 md:p-5 border-y md:border-x border-gray-200 md:rounded-2xl flex flex-col h-full relative overflow-hidden ${isHold ? 'bg-orange-50 border-orange-200' : isWaiting ? 'bg-red-50 border-red-200' : isDelivering ? 'bg-blue-50 border-blue-200' : 'bg-white'}`}>
                             <div className={`absolute top-0 left-0 w-1.5 h-full ${isHold ? 'bg-orange-400' : isWaiting ? 'bg-red-500 animate-pulse' : isDelivering ? 'bg-blue-400' : 'bg-emerald-400'}`}></div>
-                            <div className="flex justify-between items-start mb-2 pl-2">
+                            {o.inputted_by && (
+                                <div className="flex items-center gap-1 mb-1.5 pl-2 text-[10px] text-gray-500 font-medium relative z-10">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 256 256" fill="currentColor"><path d="M230.92,212c-15.23-26.33-38.7-45.21-66.09-54.16a72,72,0,1,0-73.66,0C63.78,166.78,40.31,185.66,25.08,212a8,8,0,1,0,13.85,8c18.84-32.56,52.14-52,89.07-52s70.23,19.44,89.07,52a8,8,0,1,0,13.85-8ZM72,96a56,56,0,1,1,56,56A56.06,56.06,0,0,1,72,96Z"></path></svg>
+                                    Diinput oleh: {o.inputted_by}
+                                </div>
+                            )}
+                            <div className="flex justify-between items-start mb-2 pl-2 relative z-10">
                                 <ServiceBadge type={o.tipe_layanan} />
                                 <span className="text-[10px] font-bold text-gray-400">{formatDateTime(o.created_at)}</span>
                             </div>
