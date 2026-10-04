@@ -3,7 +3,7 @@ import toast from 'react-hot-toast';
 import Swal from 'sweetalert2';
 import { GAS_API_URL } from "../../lib/firebase";
 
-// âœ… [LEVEL 3 #11] Tab Manajemen Publik (Portal UMKM & Testimoni) â€” di-extract dari App.jsx
+// ✅ [LEVEL 3 #11] Tab Manajemen Publik (Portal UMKM & Testimoni) — di-extract dari App.jsx
 // Props:
 // - supabase: Supabase client (dari lib/supabase, di-passing dari App.jsx)
 // - portalTab, setPortalTab: sub-tab aktif portal (state global di App.jsx)
@@ -26,7 +26,7 @@ export default function AdminPortalTab({
 }) {
     const fetchPortalData = async () => {
         try {
-            console.log("ðŸš€ [MULAI DETEKTIF] Menarik data Portal Publik...");
+            console.log("🚀 [MULAI DETEKTIF] Menarik data Portal Publik...");
 
             // ==========================================
             // 1. TARIK DATA DARI SUPABASE (merchants & products)
@@ -78,7 +78,7 @@ export default function AdminPortalTab({
                     };
                 });
 
-            console.log("âœ… [HASIL MERGE SUPABASE] Data akhir yang siap dirender:", finalMergedData);
+            console.log("✅ [HASIL MERGE SUPABASE] Data akhir yang siap dirender:", finalMergedData);
             setPortalUmkmData(finalMergedData);
 
             // ==========================================
@@ -112,7 +112,7 @@ export default function AdminPortalTab({
             }
 
         } catch (error) {
-            console.error("ðŸš¨ Error Utama di fetchPortalData:", error);
+            console.error("🚨 Error Utama di fetchPortalData:", error);
         }
     };
 
@@ -249,7 +249,7 @@ export default function AdminPortalTab({
 
     const handleSuspendUMKM = async (umkm) => {
         const { value: alasan, isConfirmed } = await Swal.fire({
-            title: 'âš ï¸ Suspend Toko (Bekukan)',
+            title: '⚠️ Suspend Toko (Bekukan)',
             text: `Masukkan alasan kenapa toko ${umkm.nama_toko} di-suspend:`,
             input: 'textarea',
             inputPlaceholder: 'Cth: Foto produk fulgar, alamat fiktif...',
@@ -326,36 +326,36 @@ export default function AdminPortalTab({
     return (
                                 <div className="space-y-6">
 
-                                    {/* ðŸŒŸ FIX UI: Sub-Tab dibikin Scrollable (Bisa digeser) di layar HP ðŸŒŸ */}
+                                    {/* 🌟 FIX UI: Sub-Tab dibikin Scrollable (Bisa digeser) di layar HP 🌟 */}
                                     <div className="flex gap-2 p-1.5 bg-gray-200 rounded-xl w-full overflow-x-auto hide-scrollbar mb-6">
 
                                         <button onClick={fetchPortalData} className="flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm text-[#004aad] bg-blue-50 hover:bg-blue-100 transition border border-blue-200 ml-1">
-                                            ðŸ”„ Refresh
+                                            🔄 Refresh
                                         </button>
 
                                         {/* 1. Toko Terverifikasi */}
                                         <button onClick={() => setPortalTab('terverifikasi')} className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm transition ${portalTab === 'terverifikasi' ? 'bg-blue-200 text-blue-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
-                                            âœ… Toko Terverifikasi ({totalTokoLive})
+                                            ✅ Toko Terverifikasi ({totalTokoLive})
                                         </button>
 
                                         {/* 2. Verifikasi UMKM Baru */}
                                         <button onClick={() => setPortalTab('umkm')} className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm transition ${portalTab === 'umkm' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
-                                            ðŸª Verifikasi UMKM ({portalUmkmData.filter(x => x.status && x.status.toLowerCase() === 'pending').length})
+                                            🏪 Verifikasi UMKM ({portalUmkmData.filter(x => x.status && x.status.toLowerCase() === 'pending').length})
                                         </button>
 
                                         {/* 3. BARU: TOKO DI-SUSPEND */}
                                         <button onClick={() => setPortalTab('suspended')} className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm transition ${portalTab === 'suspended' ? 'bg-red-500 text-white shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
-                                            ðŸš« Toko Di-Suspend ({portalUmkmData.filter(x => x.status && x.status.toLowerCase() === 'suspended').length})
+                                            🚫 Toko Di-Suspend ({portalUmkmData.filter(x => x.status && x.status.toLowerCase() === 'suspended').length})
                                         </button>
 
                                                                                                                         {/* 4. Testimoni */}
                                         <button onClick={() => setPortalTab('testimoni')} className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm transition ${portalTab === 'testimoni' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
-                                            ðŸ’¬ Verifikasi Testimoni ({portalTestimoniData.length})
+                                            💬 Verifikasi Testimoni ({portalTestimoniData.length})
                                         </button>
 
                                         {/* 5. Pengaduan */}
                                         <button onClick={() => setPortalTab('pengaduan')} className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm transition ${portalTab === 'pengaduan' ? 'bg-red-50 text-red-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
-                                            ðŸš© Pusat Pengaduan
+                                            🚩 Pusat Pengaduan
                                         </button>
 
                                     </div>
@@ -373,14 +373,14 @@ export default function AdminPortalTab({
                                                     {/* Ringkasan Statistik */}
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                         <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-center gap-4">
-                                                            <div className="p-3 bg-blue-500 text-white rounded-lg text-2xl">ðŸª</div>
+                                                            <div className="p-3 bg-blue-500 text-white rounded-lg text-2xl">🏪</div>
                                                             <div>
                                                                 <p className="text-sm text-gray-500 font-medium">Total Toko Live</p>
                                                                 <h4 className="text-2xl font-bold text-gray-800">{totalTokoLive} Toko</h4>
                                                             </div>
                                                         </div>
                                                         <div className="bg-green-50 border border-green-200 p-4 rounded-xl flex items-center gap-4">
-                                                            <div className="p-3 bg-green-500 text-white rounded-lg text-2xl">ðŸ“¦</div>
+                                                            <div className="p-3 bg-green-500 text-white rounded-lg text-2xl">📦</div>
                                                             <div>
                                                                 <p className="text-sm text-gray-500 font-medium">Total Produk Katalog</p>
                                                                 <h4 className="text-2xl font-bold text-gray-800">{totalProdukLive} Produk</h4>
@@ -393,9 +393,9 @@ export default function AdminPortalTab({
                                                         <div className="p-4 bg-gray-50 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                                                             <h3 className="font-bold text-gray-800 text-sm sm:text-base">Daftar Mitra UMKM & Katalog Produk Aktif</h3>
 
-                                                            {/* ðŸŒŸ INPUT SEARCH NAMA TOKO ðŸŒŸ */}
+                                                            {/* 🌟 INPUT SEARCH NAMA TOKO 🌟 */}
                                                             <div className="relative w-full sm:w-64">
-                                                                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs">ðŸ”</span>
+                                                                <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs">🔍</span>
                                                                 <input
                                                                     type="text"
                                                                     placeholder="Cari Nama Toko..."
@@ -427,8 +427,8 @@ export default function AdminPortalTab({
                                                                                     <img src={umkm.logoUrl || 'https://placehold.co/100'} className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl object-cover border shadow-sm shrink-0" alt="Logo Toko" />
                                                                                     <div>
                                                                                         <h4 className="text-base sm:text-lg font-bold text-gray-900 leading-tight">{umkm.nama_toko}</h4>
-                                                                                        <span className="inline-block px-2.5 py-0.5 bg-green-100 text-green-800 text-[10px] sm:text-xs font-semibold rounded-full mb-1">ðŸŸ¢ Live di Google Sheets</span>
-                                                                                        <p className="text-xs sm:text-sm text-gray-600 mt-1">ðŸ“ Alamat: {umkm.alamat || '-'} | ðŸ•’ Jam Ops: {umkm.jam_operasional || '-'}</p>
+                                                                                        <span className="inline-block px-2.5 py-0.5 bg-green-100 text-green-800 text-[10px] sm:text-xs font-semibold rounded-full mb-1">🟢 Live di Google Sheets</span>
+                                                                                        <p className="text-xs sm:text-sm text-gray-600 mt-1">📍 Alamat: {umkm.alamat || '-'} | 🕒 Jam Ops: {umkm.jam_operasional || '-'}</p>
                                                                                     </div>
                                                                                 </div>
 
@@ -437,7 +437,7 @@ export default function AdminPortalTab({
                                                                                     onClick={() => handleSuspendUMKM(umkm)}
                                                                                     className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg text-xs font-bold border border-red-200 transition-colors flex items-center gap-1.5 self-start lg:self-center shrink-0 shadow-sm"
                                                                                 >
-                                                                                    ðŸš« Suspend Toko
+                                                                                    🚫 Suspend Toko
                                                                                 </button>
                                                                             </div>
 
@@ -448,10 +448,10 @@ export default function AdminPortalTab({
                                                                                     className="w-full flex items-center justify-between bg-gray-50 hover:bg-blue-50 p-2.5 sm:p-3 rounded-xl border border-gray-200 transition-colors focus:outline-none"
                                                                                 >
                                                                                     <p className="text-[10px] sm:text-xs font-bold text-gray-600 uppercase tracking-wider">
-                                                                                        ðŸ“¦ Produk Toko ({umkm.produk ? umkm.produk.length : 0})
+                                                                                        📦 Produk Toko ({umkm.produk ? umkm.produk.length : 0})
                                                                                     </p>
                                                                                     <span className={`text-[10px] font-bold px-2 py-1 rounded-md transition-colors ${expandedStores[umkm.id] ? 'bg-blue-100 text-blue-700' : 'bg-gray-200 text-gray-600'}`}>
-                                                                                        {expandedStores[umkm.id] ? 'â–² Sembunyikan' : 'â–¼ Tampilkan'}
+                                                                                        {expandedStores[umkm.id] ? '▲ Sembunyikan' : '▼ Tampilkan'}
                                                                                     </span>
                                                                                 </button>
 
@@ -491,12 +491,12 @@ export default function AdminPortalTab({
                                             {portalTab === 'suspended' && (
                                                 <div className="mt-6 animate-fadeIn">
                                                     <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                                        ðŸš« Daftar Toko Yang Sedang Di-Suspend
+                                                        🚫 Daftar Toko Yang Sedang Di-Suspend
                                                     </h2>
 
                                                     {portalUmkmData.filter(umkm => umkm.status && umkm.status.toLowerCase() === 'suspended').length === 0 ? (
                                                         <div className="p-12 text-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                                                            <span className="text-4xl block mb-2">ðŸŽ‰</span>
+                                                            <span className="text-4xl block mb-2">🎉</span>
                                                             <h3 className="text-lg font-bold text-gray-700">Tidak ada toko yang di-suspend</h3>
                                                             <p className="text-gray-500 text-sm mt-1">Semua mitra UMKM berjalan normal dan tertib.</p>
                                                         </div>
@@ -511,31 +511,31 @@ export default function AdminPortalTab({
                                                                                 <img src={umkm.logoUrl || 'https://placehold.co/100'} className="w-14 h-14 rounded-xl object-cover border shadow-sm shrink-0" alt="Logo Toko" />
                                                                                 <div>
                                                                                     <h4 className="text-lg font-bold text-gray-900">{umkm.nama_toko}</h4>
-                                                                                    <p className="text-xs text-gray-500">{umkm.nama_pemilik} â€¢ {umkm.alamat || 'Alamat -'}</p>
+                                                                                    <p className="text-xs text-gray-500">{umkm.nama_pemilik} • {umkm.alamat || 'Alamat -'}</p>
                                                                                     <span className="inline-block mt-1 px-2.5 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded-full uppercase">
-                                                                                        ðŸš« Status: Di-Suspend
+                                                                                        🚫 Status: Di-Suspend
                                                                                     </span>
                                                                                 </div>
                                                                             </div>
 
                                                                             {/* Alasan Suspend */}
                                                                             <div className="bg-red-50 p-3 rounded-lg border border-red-200 mb-3 text-xs shadow-inner">
-                                                                                <p className="font-bold text-red-900 mb-0.5">âš ï¸ Alasan Suspend dari Admin:</p>
+                                                                                <p className="font-bold text-red-900 mb-0.5">⚠️ Alasan Suspend dari Admin:</p>
                                                                                 <p className="text-red-800 italic">"{umkm.alasan_suspend || 'Tidak dicantumkan'}"</p>
                                                                             </div>
 
                                                                             {/* Blok Jika Penjual Mengajukan Banding */}
                                                                             {umkm.alasan_banding && (
                                                                                 <div className="bg-blue-50 p-3 rounded-lg border border-blue-200 mb-3 text-xs shadow-inner">
-                                                                                    <p className="font-bold text-blue-900 mb-0.5">ðŸ“© Pengajuan Banding dari Penjual:</p>
+                                                                                    <p className="font-bold text-blue-900 mb-0.5">📩 Pengajuan Banding dari Penjual:</p>
                                                                                     <p className="text-blue-800 italic">"{umkm.alasan_banding}"</p>
 
                                                                                     {/* ======================================= */}
-                                                                                    {/* ðŸŒŸ ENGINE PENDETEKSI PERUBAHAN DATA ðŸŒŸ */}
+                                                                                    {/* 🌟 ENGINE PENDETEKSI PERUBAHAN DATA 🌟 */}
                                                                                     {/* ======================================= */}
                                                                                     {umkm.snapshot_suspend && (
                                                                                         <div className="mt-4 pt-3 border-t border-blue-200">
-                                                                                            <p className="font-bold text-gray-800 mb-2 flex items-center gap-1">ðŸ”„ Hasil Revisi Data:</p>
+                                                                                            <p className="font-bold text-gray-800 mb-2 flex items-center gap-1">🔄 Hasil Revisi Data:</p>
                                                                                             <div className="space-y-2">
                                                                                                 {(() => {
                                                                                                     const snap = umkm.snapshot_suspend;
@@ -566,7 +566,7 @@ export default function AdminPortalTab({
                                                                                                             {c.type === 'text' ? (
                                                                                                                 <div className="flex items-center gap-2">
                                                                                                                     <span className="text-red-500 line-through truncate w-1/2 p-1.5 bg-red-50 rounded border border-red-100">{c.old || '-'}</span>
-                                                                                                                    <span>âž”</span>
+                                                                                                                    <span>➡</span>
                                                                                                                     <span className="text-green-700 font-bold truncate w-1/2 p-1.5 bg-green-50 rounded border border-green-200 shadow-sm">{c.new || '-'}</span>
                                                                                                                 </div>
                                                                                                             ) : (
@@ -575,7 +575,7 @@ export default function AdminPortalTab({
                                                                                                                         <span className="absolute -top-2 -left-2 bg-red-100 text-red-600 text-[8px] font-bold px-1 rounded shadow-sm">LAMA</span>
                                                                                                                         <img src={c.old || 'https://placehold.co/50'} className="w-12 h-12 object-cover rounded-lg border-2 border-red-200 opacity-60" />
                                                                                                                     </div>
-                                                                                                                    <span className="text-lg">âž”</span>
+                                                                                                                    <span className="text-lg">➡</span>
                                                                                                                     <div className="relative">
                                                                                                                         <span className="absolute -top-2 -right-2 bg-green-100 text-green-700 text-[8px] font-bold px-1 rounded shadow-sm z-10">BARU</span>
                                                                                                                         <img src={c.new || 'https://placehold.co/50'} className="w-16 h-16 object-cover rounded-xl border-2 border-green-400 shadow-md" />
@@ -597,7 +597,7 @@ export default function AdminPortalTab({
                                                                             onClick={() => handleUnsuspendUMKM(umkm)}
                                                                             className="w-full mt-4 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold transition shadow-md flex items-center justify-center gap-2"
                                                                         >
-                                                                            âœ… Pulihkan Toko (Buka Suspend & Live Kembali)
+                                                                            ✅ Pulihkan Toko (Buka Suspend & Live Kembali)
                                                                         </button>
                                                                     </div>
                                                                 ))}
@@ -612,7 +612,7 @@ export default function AdminPortalTab({
                                             {portalTab === 'umkm' && (
                                                 <div className="mt-6">
                                                     <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                                        ðŸª Daftar Antrean Verifikasi UMKM Baru
+                                                        🏪 Daftar Antrean Verifikasi UMKM Baru
                                                     </h2>
 
                                                     {/* 1. FILTER KHUSUS STATUS PENDING UNTUK CEK KOSONG */}
@@ -620,7 +620,7 @@ export default function AdminPortalTab({
 
                                                         // TAMPILAN JIKA TIDAK ADA UMKM PENDING
                                                         <div className="p-12 text-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                                                            <span className="text-4xl block mb-2">ðŸŽ‰</span>
+                                                            <span className="text-4xl block mb-2">🎉</span>
                                                             <h3 className="text-lg font-bold text-gray-700">Tidak ada pengajuan UMKM baru</h3>
                                                             <p className="text-gray-500 text-sm mt-1">Semua pendaftaran mitra UMKM sudah diverifikasi.</p>
                                                         </div>
@@ -640,12 +640,12 @@ export default function AdminPortalTab({
                                                                                 {umkm.logoUrl ? (
                                                                                     <img src={umkm.logoUrl} alt="Logo Toko" className="w-full h-full object-cover" />
                                                                                 ) : (
-                                                                                    <span className="flex items-center justify-center w-full h-full text-2xl">ðŸª</span>
+                                                                                    <span className="flex items-center justify-center w-full h-full text-2xl">🏪</span>
                                                                                 )}
                                                                             </div>
                                                                             <div>
                                                                                 <h3 className="font-bold text-xl text-gray-800 leading-tight">{umkm.nama_toko}</h3>
-                                                                                <p className="text-sm text-gray-500 font-medium">{umkm.nama_pemilik} â€¢ {Array.isArray(umkm.kategori) ? umkm.kategori.join(', ') : (umkm.kategori || 'Kategori tidak ada')}</p>
+                                                                                <p className="text-sm text-gray-500 font-medium">{umkm.nama_pemilik} • {Array.isArray(umkm.kategori) ? umkm.kategori.join(', ') : (umkm.kategori || 'Kategori tidak ada')}</p>
                                                                                 <div className="flex items-center gap-2 mt-1">
                                                                                     <span className="bg-yellow-100 text-yellow-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase">
                                                                                         Status: {umkm.status}
@@ -657,10 +657,10 @@ export default function AdminPortalTab({
                                                                         {/* Detail Toko */}
                                                                         <div className="bg-blue-50/50 p-3 rounded-lg border border-blue-100 mb-4">
                                                                             <p className="text-sm text-gray-700 mb-1 flex items-start gap-2">
-                                                                                <span>ðŸ“</span> <span>{umkm.alamat || <span className="italic text-red-400">Belum diisi</span>}</span>
+                                                                                <span>📍</span> <span>{umkm.alamat || <span className="italic text-red-400">Belum diisi</span>}</span>
                                                                             </p>
                                                                             <p className="text-sm text-gray-700 mb-1 flex items-start gap-2">
-                                                                                <span>ðŸ•’</span> <span>{umkm.jam_operasional || '-'}</span>
+                                                                                <span>🕒</span> <span>{umkm.jam_operasional || '-'}</span>
                                                                             </p>
                                                                             <p className="text-sm text-gray-600 italic mt-2 border-t pt-2 border-blue-100">
                                                                                 "{umkm.deskripsi || <span className="text-red-400">Deskripsi kosong</span>}"
@@ -670,7 +670,7 @@ export default function AdminPortalTab({
                                                                         {/* SEKSI ETALASE PRODUK */}
                                                                         <div className="mb-6 flex-1">
                                                                             <h4 className="font-bold text-gray-700 text-sm mb-3 flex items-center gap-2">
-                                                                                ðŸ“¦ Etalase Produk ({umkm.produk ? umkm.produk.length : 0})
+                                                                                📦 Etalase Produk ({umkm.produk ? umkm.produk.length : 0})
                                                                             </h4>
 
                                                                             {umkm.produk && umkm.produk.length > 0 ? (
@@ -717,14 +717,14 @@ export default function AdminPortalTab({
                                                                                 onClick={() => handleApproveUMKM(umkm)}
                                                                                 className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-colors"
                                                                             >
-                                                                                âœ… Setujui & Publish
+                                                                                ✅ Setujui & Publish
                                                                             </button>
 
                                                                             <button
                                                                                 onClick={() => handleRejectUMKM(umkm)}
                                                                                 className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2.5 px-4 rounded-lg text-sm transition-colors"
                                                                             >
-                                                                                ðŸ—‘ï¸ Tolak
+                                                                                🗑️ Tolak
                                                                             </button>
                                                                         </div>
 
@@ -741,7 +741,7 @@ export default function AdminPortalTab({
                                             {portalTab === 'testimoni' && (
                                                 <div className="mt-6">
                                                     <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-                                                        ðŸ’¬ Daftar Antrean Verifikasi Testimoni
+                                                        💬 Daftar Antrean Verifikasi Testimoni
                                                     </h2>
 
                                                     {/* LOGIKA CONDITIONAL RENDERING MULAI DI SINI */}
@@ -778,7 +778,7 @@ export default function AdminPortalTab({
 
                                                         // 2. TAMPILAN JIKA LOADING SELESAI TAPI DATA KOSONG
                                                         <div className="p-12 text-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
-                                                            <span className="text-4xl block mb-2">ðŸŽ‰</span>
+                                                            <span className="text-4xl block mb-2">🎉</span>
                                                             <h3 className="text-lg font-bold text-gray-700">Tidak ada pengajuan testimoni baru</h3>
                                                             <p className="text-gray-500 text-sm mt-1">Semua ulasan sudah diverifikasi atau belum ada yang masuk.</p>
                                                         </div>
@@ -795,11 +795,11 @@ export default function AdminPortalTab({
                                                                         <div>
                                                                             <h3 className="font-bold text-lg text-gray-800">{rev.Nama}</h3>
                                                                             <p className="text-xs text-gray-500 flex items-center gap-1">
-                                                                                ðŸ“ {rev.Alamat || 'Tidak ada alamat'}
+                                                                                📍 {rev.Alamat || 'Tidak ada alamat'}
                                                                             </p>
                                                                         </div>
                                                                         <div className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full font-bold text-sm flex items-center gap-1">
-                                                                            â­ {rev.Bintang}/5
+                                                                            ⭐ {rev.Bintang}/5
                                                                         </div>
                                                                     </div>
 
@@ -814,13 +814,13 @@ export default function AdminPortalTab({
                                                                             onClick={() => handleReviewAction(rev.ID_Ulasan, 'Published')}
                                                                             className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-2.5 px-4 rounded-lg text-sm transition-colors"
                                                                         >
-                                                                            âœ… Setujui & Publish
+                                                                            ✅ Setujui & Publish
                                                                         </button>
                                                                         <button
                                                                             onClick={() => handleReviewAction(rev.ID_Ulasan, 'Rejected')}
                                                                             className="flex-1 bg-red-100 hover:bg-red-200 text-red-700 font-bold py-2.5 px-4 rounded-lg text-sm transition-colors"
                                                                         >
-                                                                            ðŸ—‘ï¸ Tolak (Hapus)
+                                                                            🗑️ Tolak (Hapus)
                                                                         </button>
                                                                     </div>
 
