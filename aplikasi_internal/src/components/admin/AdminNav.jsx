@@ -1,4 +1,3 @@
-import React from "react";
 
 const ADMIN_TABS = [
     { key: 'operasional', icon: '/dekstop-icon.webp', alt: 'Live', shortLabel: 'Live Orderan', fullLabel: 'Operasional (Live)' },

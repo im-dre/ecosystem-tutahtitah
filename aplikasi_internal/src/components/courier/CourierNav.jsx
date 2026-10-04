@@ -1,4 +1,3 @@
-import React from "react";
 
 const CourierNav = ({ courierMainTab, setCourierMainTab, activeOrdersCount, forwardedReportsCount, unreadChatCount = 0 }) => {
     const menuItems = [

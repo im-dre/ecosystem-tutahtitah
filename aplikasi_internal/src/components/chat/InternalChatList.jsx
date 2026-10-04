@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { MessageSquare, Plus, Search, X, ChevronRight, Users, Bike, Store, User, Trash2, AlertTriangle } from 'lucide-react';
+import { MessageSquare, Plus, Search, X, ChevronRight, Users, Bike, Store, User, Trash2, AlertTriangle, Eye } from 'lucide-react';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -29,7 +29,8 @@ export default function InternalChatList({
   onStartNewChat,
   onDeleteChat,
   onDeleteAllChats,
-  onMarkAsRead
+  onMarkAsRead,
+  onOpenMonitoring
 }) {
   const [showNewChat, setShowNewChat] = useState(false);
   const [newChatTab, setNewChatTab] = useState('customer'); // 'customer' | 'courier' | 'merchant'
@@ -107,6 +108,15 @@ export default function InternalChatList({
               title="Hapus Semua"
             >
               <Trash2 size={16} />
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={onOpenMonitoring}
+              className="w-8 h-8 bg-slate-900 text-white rounded-full flex items-center justify-center hover:bg-slate-700 active:scale-90 transition-all shadow-md"
+              title="Monitoring Chat"
+            >
+              <Eye size={17} />
             </button>
           )}
           <button

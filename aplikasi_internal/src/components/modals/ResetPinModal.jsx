@@ -1,4 +1,3 @@
-import React from "react";
 
 /**
  * ResetPinModal — Modal set PIN baru dari link reset email Supabase

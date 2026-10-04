@@ -1,4 +1,3 @@
-import React from "react";
 import ServiceBadge from "../../components/ui/ServiceBadge";
 import CustomCourierSelect from "../../components/ui/CustomCourierSelect";
 import { formatDateTime, getWaLink } from "../../utils/helpers";
@@ -115,11 +114,9 @@ export default function AdminOperasionalTab({ adminOperasionalTab, setAdminOpera
             {/* Sub-Tabs Nav Admin */}
             <div className="flex overflow-x-auto hide-scrollbar gap-5 px-4 md:px-0 border-b border-gray-200 sticky top-[65px] z-30 bg-gray-50 pt-3 -mx-4 md:mx-0">
                 {['Semua', 'Diproses', 'Menuju Lokasi', 'Kendala', 'Nyerah'].map(sub => {
-                    let count = 0;
-                    if (sub === 'Semua') {
-                        count = adminProcessingOrders.length;
-                    } else {
-                        count = adminProcessingOrders.filter(o => {
+                    const count = sub === 'Semua'
+                        ? adminProcessingOrders.length
+                        : adminProcessingOrders.filter(o => {
                             const isHold = o.status === 'hold';
                             const isWaiting = o.status === 'waiting_customer' || (o.failed_couriers && o.failed_couriers.length > 0 && o.status === 'processing');
                             const isDelivering = o.status === 'delivering';
@@ -130,7 +127,6 @@ export default function AdminOperasionalTab({ adminOperasionalTab, setAdminOpera
                             if (sub === 'Nyerah') return isWaiting;
                             return false;
                         }).length;
-                    }
 
                     return (
                         <button key={sub} onClick={() => setAdminOperasionalSubTab(sub)}

@@ -1,4 +1,3 @@
-import React from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 
 // [LEVEL 3 #14] Tab Analitik Kurir di-extract dari App.jsx.

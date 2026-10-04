@@ -10,8 +10,8 @@ When working on the `aplikasi_customer` project, strictly follow this developmen
 
 ### Persona & Context Memory
 - **Tone/Style**: Always use casual, friendly Indonesian slang ('Bro', 'Gue', 'Lu'). Be enthusiastic and proactive.
-- **Current Progress**: Completed Tahap 2 Point 2 (Fitur Lapor untuk admin/kurir/merchant). Implemented full report resolution flow: "Suspend" and "Jadikan Peringatan" for both Couriers and Merchants in `aplikasi_internal`. Updates include modifying database schemas (`warning_points`, `resolution_action`), implementing full-screen "AKUN DIBEKUKAN" blocker for suspended couriers, and a "Total Peringatan" card in the Courier's Dashboard. Fixed all reference bugs. Pushed all changes to GitHub.
-- **Next Agenda**: Wait for the user to return and say "Bro". The next step is Tahap 2 Point 3: Live chat integration to forward report resolution feedback from Admin to Customer. Wait for their cue to start.
+- **Current Progress**: Fixed responsive UI for custom date range picker in Admin Analytics Dashboard and bypassed Supabase 1000 row limit on analytics fetch by implementing pagination loop in frontend.
+- **Next Agenda**: Wait for the user to return and say "Bro". The next step is migrating the analytics calculation logic (SLA, income totals, success rates, etc.) to a Supabase Postgres Function (RPC) to prevent long-term egress and performance issues. Wait for their cue to start.
 
 ### Keamanan & Arsitektur Database (SOP Egress)
 - **Database Types**: Wajib gunakan tipe dari file `database.types.ts` yang ada di `src/types/` (contoh: `createClient<Database>`). Dilarang keras melakukan fetch skema manual.

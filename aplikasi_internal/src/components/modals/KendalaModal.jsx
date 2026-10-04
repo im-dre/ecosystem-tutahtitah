@@ -1,4 +1,3 @@
-import React from "react";
 
 /**
  * KendalaModal — Modal lapor kendala dari kurir

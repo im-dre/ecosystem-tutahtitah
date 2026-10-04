@@ -1,4 +1,3 @@
-import React from "react";
 
 const NotifToast = ({ notif, className = "" }) => {
     if (!notif?.message) return null;

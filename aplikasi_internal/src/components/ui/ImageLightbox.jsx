@@ -1,4 +1,3 @@
-import React from "react";
 
 const ImageLightbox = ({ lightboxData, setLightboxData }) => {
     if (!lightboxData?.urls?.length) return null;

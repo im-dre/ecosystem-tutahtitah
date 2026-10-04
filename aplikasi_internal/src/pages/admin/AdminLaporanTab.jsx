@@ -1,4 +1,3 @@
-import React from "react";
 import { Bar, BarChart, CartesianGrid, Cell, Line, LineChart, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis } from "recharts";
 import SimpleTooltip from "../../components/ui/SimpleTooltip";
 
@@ -39,10 +38,10 @@ export default function AdminLaporanTab({
         </select>
 
         {adminFilterPeriod === 'custom' && (
-            <div className="flex items-center gap-2 flex-grow md:flex-none">
-                <input type="date" className="bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl px-3 py-2 font-bold outline-none" value={adminFilterStartDate} onChange={e => setAdminFilterStartDate(e.target.value)} />
-                <span className="text-gray-400 font-bold">-</span>
-                <input type="date" className="bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl px-3 py-2 font-bold outline-none" value={adminFilterEndDate} onChange={e => setAdminFilterEndDate(e.target.value)} />
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto flex-grow md:flex-none">
+                <input type="date" className="w-full sm:w-auto bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl px-3 py-2 font-bold outline-none" value={adminFilterStartDate} onChange={e => setAdminFilterStartDate(e.target.value)} />
+                <span className="text-gray-400 font-bold hidden sm:block">-</span>
+                <input type="date" className="w-full sm:w-auto bg-gray-50 border border-gray-200 text-gray-800 text-sm rounded-xl px-3 py-2 font-bold outline-none" value={adminFilterEndDate} onChange={e => setAdminFilterEndDate(e.target.value)} />
             </div>
         )}
 

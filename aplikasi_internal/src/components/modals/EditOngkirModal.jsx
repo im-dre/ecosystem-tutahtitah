@@ -1,4 +1,3 @@
-import React from "react";
 
 const EditOngkirModal = ({ editOngkirModal, setEditOngkirModal, onSubmit }) => {
     if (!editOngkirModal?.isOpen) return null;

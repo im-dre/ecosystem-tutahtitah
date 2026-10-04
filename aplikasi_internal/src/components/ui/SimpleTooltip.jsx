@@ -1,4 +1,3 @@
-import React from "react";
 
 const SimpleTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {

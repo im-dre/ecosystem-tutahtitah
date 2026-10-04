@@ -1,4 +1,3 @@
-import React from "react";
 
 /**
  * HrModal — Modal tambah / edit karyawan

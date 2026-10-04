@@ -1,4 +1,3 @@
-import React from "react";
 
 /**
  * CourierSettingsModal — Modal pengaturan profil & PIN kurir

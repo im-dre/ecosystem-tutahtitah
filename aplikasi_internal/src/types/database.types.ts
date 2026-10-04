@@ -114,6 +114,7 @@ export type Database = {
           customer_id: string | null
           id: string
           initiator_id: string | null
+          is_disabled_by_admin: boolean
           is_deleted_by_customer: boolean | null
           is_deleted_by_participant: boolean | null
           order_id: number | null
@@ -127,6 +128,7 @@ export type Database = {
           customer_id?: string | null
           id?: string
           initiator_id?: string | null
+          is_disabled_by_admin?: boolean
           is_deleted_by_customer?: boolean | null
           is_deleted_by_participant?: boolean | null
           order_id?: number | null
@@ -140,6 +142,7 @@ export type Database = {
           customer_id?: string | null
           id?: string
           initiator_id?: string | null
+          is_disabled_by_admin?: boolean
           is_deleted_by_customer?: boolean | null
           is_deleted_by_participant?: boolean | null
           order_id?: number | null
@@ -774,18 +777,76 @@ export type Database = {
         ]
       }
     }
-    Views: {
-      [_ in never]: never
-    }
+    Views: Record<string, never>
     Functions: {
-      [_ in never]: never
+      get_chat_summaries: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          chat_type: string
+          customer_id: string | null
+          display_avatar: string | null
+          display_name: string
+          display_subtitle: string
+          id: string
+          initiator_id: string | null
+          is_disabled_by_admin: boolean
+          last_message: string
+          last_time: string | null
+          participant_id: string | null
+          status: string | null
+          unread_count: number
+        }[]
+      }
+      get_chat_summary: {
+        Args: { p_chat_id: string }
+        Returns: {
+          chat_type: string
+          customer_id: string | null
+          display_avatar: string | null
+          display_name: string
+          display_subtitle: string
+          id: string
+          initiator_id: string | null
+          is_disabled_by_admin: boolean
+          last_message: string
+          last_time: string | null
+          participant_id: string | null
+          status: string | null
+          unread_count: number
+        }[]
+      }
+      rpc_soft_delete_all_chats: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      fetch_cctv_chats: {
+        Args: { p_limit?: number; p_offset?: number }
+        Returns: {
+          chat_type: string
+          display_name: string
+          display_subtitle: string
+          id: string
+          is_disabled_by_admin: boolean
+          last_message: string
+          last_time: string | null
+          status: string | null
+        }[]
+      }
+      rpc_disable_chat_by_admin: {
+        Args: { p_chat_id: string }
+        Returns: undefined
+      }
+      rpc_soft_delete_chat: {
+        Args: { p_chat_id: string }
+        Returns: undefined
+      }
+      rpc_soft_delete_message: {
+        Args: { p_msg_id: string }
+        Returns: undefined
+      }
     }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
+    Enums: Record<string, never>
+    CompositeTypes: Record<string, never>
   }
 }
 

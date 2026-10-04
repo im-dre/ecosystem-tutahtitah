@@ -1,6 +1,5 @@
-import React from "react";
 import ServiceBadge from "../../components/ui/ServiceBadge";
-import { formatDateTime, parseJastipItemsObjects, parseJastipNote, parseKirimDetails, parseOjekDetails } from "../../utils/helpers";
+import { formatDateTime, parseJastipItemsObjects, parseJastipNote, parseKirimDetails, parseOjekDetails, parseTitipanObjects } from "../../utils/helpers";
 
 // [LEVEL 4 #16] Tab Tugas Aktif Kurir diekstrak dari App.jsx.
 // Seluruh state global, realtime Supabase, dan handler bisnis tetap di App.jsx.
@@ -19,6 +18,7 @@ export default function CourierTugasAktifTab({
     setDispatchInputs,
     onSetLightboxImg,
     onOpenEditOrder,
+    onOpenEditTitipan,
     onOpenKendala,
     onSendBillToAdmin,
     onCompleteOrder,
@@ -30,11 +30,9 @@ export default function CourierTugasAktifTab({
                                         {/* Sub-Tabs Nav Courier */}
                                         <div className="flex overflow-x-auto hide-scrollbar gap-5 px-4 md:px-0 border-b border-gray-200 mb-2 sticky top-0 z-30 bg-[#eef3fb] pt-3">
                                             {['Semua', 'Diproses', 'Menuju Lokasi', 'Kendala'].map(sub => {
-                                                let count = 0;
-                                                if (sub === 'Semua') {
-                                                    count = courierActiveOrders.length;
-                                                } else {
-                                                    count = courierActiveOrders.filter(o => {
+                                                const count = sub === 'Semua'
+                                                    ? courierActiveOrders.length
+                                                    : courierActiveOrders.filter(o => {
                                                         const isHold = o.status === 'hold';
                                                         const isDelivering = o.status === 'delivering';
                                                         const isProcessing = o.status === 'processing';
@@ -44,7 +42,6 @@ export default function CourierTugasAktifTab({
                                                         if (sub === 'Kendala') return isHold;
                                                         return false;
                                                     }).length;
-                                                }
 
                                                 return (
                                                     <button key={sub} onClick={() => setCourierTugasSubTab(sub)}
@@ -85,6 +82,7 @@ export default function CourierTugasAktifTab({
                                                 const jastipNote = task.tipe_layanan === 'Belanja' ? parseJastipNote(task.raw_order_text) : '';
                                                 const ojekData = task.tipe_layanan === 'Antar Jemput' ? parseOjekDetails(task.raw_order_text) : null;
                                                 const kirimData = task.tipe_layanan === 'Kirim Barang' ? parseKirimDetails(task.raw_order_text) : null;
+                                                const titipanObj = (task.tipe_layanan === 'Antar Jemput' || task.tipe_layanan === 'Kirim Barang') ? parseTitipanObjects(task.raw_order_text) : [];
 
                                                 return (
                                                     <div key={task.id} className={`bg-white p-4 md:rounded-xl md:border-x border-y border-x-0 ${isHold ? 'border-orange-200 bg-orange-50/30' : (isWaiting ? 'border-red-200 bg-red-50/30' : 'border-gray-200')} shadow-none md:shadow-sm flex flex-col`}>
@@ -206,6 +204,49 @@ export default function CourierTugasAktifTab({
                                                                     <p className="text-xs text-yellow-900 font-medium whitespace-pre-wrap">{ojekData.note}</p>
                                                                 </div>
                                                             )}
+                                                            <div className="mt-2">
+                                                                <div className="flex justify-between items-center mb-2 mt-3">
+                                                                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">🛍️ Titipan Belanja / Barang:</p>
+                                                                    <button onClick={() => { onOpenEditTitipan(task); }} className="text-[10px] font-bold text-[#004aad] bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition shadow-sm flex items-center gap-1">
+                                                                        ✏️ Tambah/Edit Titipan
+                                                                    </button>
+                                                                </div>
+                                                                {titipanObj.length > 0 ? (
+                                                                    <>
+                                                                        {titipanObj.map((itemObj, idx) => {
+                                                                            const userPrice = jastipPrices[`${task.id}_titipan_${idx}`];
+                                                                            const displayVal = userPrice !== undefined ? userPrice : (itemObj.defaultPrice > 0 ? itemObj.defaultPrice : '');
+                                                                            return (
+                                                                                <div key={idx} className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 flex flex-col gap-2 mb-2 shadow-inner">
+                                                                                    <div className="flex items-start gap-2">
+                                                                                        <input type="checkbox" className="mt-1 w-4 h-4 rounded text-[#004aad] focus:ring-[#004aad]" checked={!!jastipChecked[`${task.id}_titipan_${idx}`]} onChange={(e) => updateJastipChecked(task.id, `titipan_${idx}`, e.target.checked)} />
+                                                                                        <span className="text-xs font-medium text-gray-800">{itemObj.name}</span>
+                                                                                    </div>
+                                                                                    {task.status !== 'hold' && (
+                                                                                        <input
+                                                                                            type="number"
+                                                                                            placeholder="Harga Barang (Rp)"
+                                                                                            className="w-full text-xs p-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[#004aad] font-bold text-[#004aad]"
+                                                                                            value={displayVal}
+                                                                                            onChange={(e) => updateJastipPrice(task.id, `titipan_${idx}`, e.target.value)}
+                                                                                        />
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                        <div className="border-t border-gray-200 pt-2 mb-1 flex justify-between items-center">
+                                                                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Subtotal Titipan:</span>
+                                                                            <span className="text-sm font-bold text-[#004aad]">Rp {titipanObj.reduce((sum, itemObj, idx) => {
+                                                                                const userPrice = jastipPrices[`${task.id}_titipan_${idx}`];
+                                                                                const finalPrice = (userPrice !== undefined && userPrice !== "") ? parseFloat(userPrice) : itemObj.defaultPrice;
+                                                                                return sum + (finalPrice || 0);
+                                                                            }, 0).toLocaleString('id-ID')}</span>
+                                                                        </div>
+                                                                    </>
+                                                                ) : (
+                                                                    <p className="text-[10px] text-gray-400 italic">Belum ada titipan.</p>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     ) : task.tipe_layanan === 'Kirim Barang' && kirimData ? (
                                                         <div className="mb-4 space-y-2">
@@ -231,6 +272,49 @@ export default function CourierTugasAktifTab({
                                                                     <p className="text-xs text-yellow-900 font-medium whitespace-pre-wrap">{kirimData.note}</p>
                                                                 </div>
                                                             )}
+                                                            <div className="mt-2">
+                                                                <div className="flex justify-between items-center mb-2 mt-3">
+                                                                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">🛍️ Titipan Belanja / Barang:</p>
+                                                                    <button onClick={() => { onOpenEditTitipan(task); }} className="text-[10px] font-bold text-[#004aad] bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-100 transition shadow-sm flex items-center gap-1">
+                                                                        ✏️ Tambah/Edit Titipan
+                                                                    </button>
+                                                                </div>
+                                                                {titipanObj.length > 0 ? (
+                                                                    <>
+                                                                        {titipanObj.map((itemObj, idx) => {
+                                                                            const userPrice = jastipPrices[`${task.id}_titipan_${idx}`];
+                                                                            const displayVal = userPrice !== undefined ? userPrice : (itemObj.defaultPrice > 0 ? itemObj.defaultPrice : '');
+                                                                            return (
+                                                                                <div key={idx} className="bg-gray-50 p-2.5 rounded-xl border border-gray-200 flex flex-col gap-2 mb-2 shadow-inner">
+                                                                                    <div className="flex items-start gap-2">
+                                                                                        <input type="checkbox" className="mt-1 w-4 h-4 rounded text-[#004aad] focus:ring-[#004aad]" checked={!!jastipChecked[`${task.id}_titipan_${idx}`]} onChange={(e) => updateJastipChecked(task.id, `titipan_${idx}`, e.target.checked)} />
+                                                                                        <span className="text-xs font-medium text-gray-800">{itemObj.name}</span>
+                                                                                    </div>
+                                                                                    {task.status !== 'hold' && (
+                                                                                        <input
+                                                                                            type="number"
+                                                                                            placeholder="Harga Barang (Rp)"
+                                                                                            className="w-full text-xs p-2 rounded-lg border border-gray-200 focus:outline-none focus:border-[#004aad] font-bold text-[#004aad]"
+                                                                                            value={displayVal}
+                                                                                            onChange={(e) => updateJastipPrice(task.id, `titipan_${idx}`, e.target.value)}
+                                                                                        />
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                        <div className="border-t border-gray-200 pt-2 mb-1 flex justify-between items-center">
+                                                                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Subtotal Titipan:</span>
+                                                                            <span className="text-sm font-bold text-[#004aad]">Rp {titipanObj.reduce((sum, itemObj, idx) => {
+                                                                                const userPrice = jastipPrices[`${task.id}_titipan_${idx}`];
+                                                                                const finalPrice = (userPrice !== undefined && userPrice !== "") ? parseFloat(userPrice) : itemObj.defaultPrice;
+                                                                                return sum + (finalPrice || 0);
+                                                                            }, 0).toLocaleString('id-ID')}</span>
+                                                                        </div>
+                                                                    </>
+                                                                ) : (
+                                                                    <p className="text-[10px] text-gray-400 italic">Belum ada titipan.</p>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     ) : (
                                                         <div className="bg-gray-50 p-3 rounded-lg text-xs font-mono border border-gray-100 mb-3 whitespace-pre-wrap shadow-inner">{task.raw_order_text}</div>

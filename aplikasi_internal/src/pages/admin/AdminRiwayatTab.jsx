@@ -1,4 +1,3 @@
-import React from "react";
 import ServiceBadge from "../../components/ui/ServiceBadge";
 import { formatDateTime, calculateDuration } from "../../utils/helpers";
 
@@ -13,16 +12,13 @@ export default function AdminRiwayatTab({
     adminFilterCourier, setAdminFilterCourier,
     adminHistorySearch, setAdminHistorySearch,
     adminHistoryLimit, setAdminHistoryLimit,
-    adminAnalytics,
     adminHistoricalOrders,
     couriersList,
     isFetchingHistory,
     orderRatings,
     user,
-    loading,
     setLightboxImg,
-    onDeleteOrder,
-    onFetchAllHistoricalOrders
+    onDeleteOrder
 }) {
     return (                                <div className="space-y-4">
                                     <div className="bg-white pt-4 pb-3 px-4 sm:px-6 md:px-3 md:rounded-2xl shadow-sm border-b md:border border-gray-200 flex flex-col sticky top-[65px] z-30 -mx-4 sm:-mx-6 md:mx-0">

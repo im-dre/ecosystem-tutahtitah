@@ -1,4 +1,3 @@
-import React from "react";
 
 // ✅ [LEVEL 2 #10] Tab Manajemen Tim / HRD Admin — di-extract dari App.jsx
 // Props:

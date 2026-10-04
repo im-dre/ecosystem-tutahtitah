@@ -15,7 +15,7 @@ export const formatDateTime = (isoString) => {
       month: "short",
       year: "numeric",
     })}`;
-  } catch (e) {
+  } catch {
     return "-";
   }
 };
@@ -29,7 +29,7 @@ export const calculateDuration = (startIso, endIso) => {
     if (diffMins < 0) return "-";
     if (diffMins < 60) return `${diffMins} Mnt`;
     return `${Math.floor(diffMins / 60)}j ${diffMins % 60}m`;
-  } catch (e) {
+  } catch {
     return "-";
   }
 };
@@ -39,7 +39,7 @@ export const getDurationMins = (startIso, endIso) => {
   try {
     const diffMs = new Date(endIso) - new Date(startIso);
     return diffMs > 0 ? diffMs / 60000 : null;
-  } catch (e) {
+  } catch {
     return null;
   }
 };
@@ -80,7 +80,7 @@ export const isWithinPeriod = (dateString, period, customStart, customEnd) => {
       }
     }
     return true;
-  } catch (e) {
+  } catch {
     return false;
   }
 };
@@ -138,9 +138,9 @@ export const parseOjekDetails = (rawText) => {
     /Alamat Jemput:\s*([\s\S]*?)(?=Alamat Tujuan:|$)/i
   );
   const tujuanMatch = rawText.match(
-    /Alamat Tujuan:\s*([\s\S]*?)(?=Note\/Patokan Titik Jemput:|$)/i
+    /Alamat Tujuan:\s*([\s\S]*?)(?=Note\/Patokan Titik Jemput:|Titipan:|$)/i
   );
-  const noteMatch = rawText.match(/Note\/Patokan Titik Jemput:\s*([\s\S]*)/i);
+  const noteMatch = rawText.match(/Note\/Patokan Titik Jemput:\s*([\s\S]*?)(?=Titipan:|$)/i);
   if (!jemputMatch && !tujuanMatch) return null;
   return {
     jemput:
@@ -162,8 +162,8 @@ export const parseKirimDetails = (rawText) => {
   const tujuanMatch = rawText.match(
     /Alamat Tujuan:\s*([\s\S]*?)(?=Nama Penerima:|$)/i
   );
-  const penerimaMatch = rawText.match(/Nama Penerima:\s*([\s\S]*?)(?=Note:|$)/i);
-  const noteMatch = rawText.match(/Note:\s*([\s\S]*)/i);
+  const penerimaMatch = rawText.match(/Nama Penerima:\s*([\s\S]*?)(?=Note:|Titipan:|$)/i);
+  const noteMatch = rawText.match(/Note:\s*([\s\S]*?)(?=Titipan:|$)/i);
   if (!barangMatch && !ambilMatch && !tujuanMatch) return null;
   return {
     barang:
@@ -177,4 +177,29 @@ export const parseKirimDetails = (rawText) => {
         : "-",
     note: noteMatch && noteMatch[1].trim() ? noteMatch[1].trim() : "",
   };
+};
+
+export const parseTitipanObjects = (rawText) => {
+  if (!rawText) return [];
+  const match = rawText.match(/Titipan:\s*([\s\S]*)/i);
+  if (!match) return [];
+  const listPart = match[1];
+  return listPart
+    .split("\n")
+    .filter((line) => {
+      const t = line.trim();
+      if (t.length === 0) return false;
+      if (/^\d+\.?$/.test(t)) return false;
+      return true;
+    })
+    .map((line) => {
+      let name = line.trim();
+      let defaultPrice = 0;
+      const splitIndex = name.lastIndexOf("= Rp ");
+      if (splitIndex > -1) {
+        defaultPrice = parseFloat(name.substring(splitIndex + 5).trim()) || 0;
+        name = name.substring(0, splitIndex).trim();
+      }
+      return { name, defaultPrice, original: line.trim() };
+    });
 };

@@ -25,7 +25,7 @@ const calcJastipSubtotal = (orderId, rawText, jastipPrices = {}) => {
 // GENERATOR GAMBAR STRUK NATIVE HTML5 CANVAS DENGAN PIXEL SCALING (HD MODE)
 // GENERATOR GAMBAR STRUK (ALL SERVICES SUPPORTED)
 export const generateReceiptBlob = async (order, courier = {}, jastipPrices = {}) => {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     let isBelanja = order.tipe_layanan === 'Belanja';
     let parsedItems = [];
 

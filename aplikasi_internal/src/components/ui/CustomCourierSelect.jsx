@@ -1,14 +1,14 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 
 /**
  * CustomCourierSelect
  * Props:
- *   value       — id kurir yang dipilih
- *   onChange    — callback(val)
- *   placeholder — teks placeholder
- *   bgClass     — Tailwind class untuk bg input (default "bg-gray-50")
- *   couriersList         — array semua kurir
- *   activeCourierCounts  — object { courierId: jumlahOrderAktif }
+ *   value       â€” id kurir yang dipilih
+ *   onChange    â€” callback(val)
+ *   placeholder â€” teks placeholder
+ *   bgClass     â€” Tailwind class untuk bg input (default "bg-gray-50")
+ *   couriersList         â€” array semua kurir
+ *   activeCourierCounts  â€” object { courierId: jumlahOrderAktif }
  */
 const CustomCourierSelect = ({
   value,
@@ -45,7 +45,7 @@ const CustomCourierSelect = ({
         >
           {selected ? selected.full_name : placeholder}
         </span>
-        <span className="text-gray-400 text-[10px]">▼</span>
+        <span className="text-gray-400 text-[10px]">â–¼</span>
       </div>
 
       {isOpen && (
@@ -89,7 +89,7 @@ const CustomCourierSelect = ({
                     </span>
                     {courierRatingStats[c.id] && courierRatingStats[c.id].count > 0 && (
                       <span className="text-[9px] text-gray-500 font-medium flex items-center gap-0.5 mt-0.5">
-                        <span className="text-yellow-400">⭐</span> {courierRatingStats[c.id].average} ({courierRatingStats[c.id].count})
+                        <span className="text-yellow-400">â­</span> {courierRatingStats[c.id].average} ({courierRatingStats[c.id].count})
                       </span>
                     )}
                   </div>

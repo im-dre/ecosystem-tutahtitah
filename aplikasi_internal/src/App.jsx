@@ -1,26 +1,23 @@
-import React, { useState, useEffect, useMemo } from "react";
-// ✅ [TUGAS 1] Import Supabase dari npm (menggantikan CDN jsdelivr)
+import { useState, useEffect, useMemo, useCallback } from "react";
+// ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ [TUGAS 1] Import Supabase dari npm (menggantikan CDN jsdelivr)
 import { supabase, createTempSupabaseClient } from "./lib/supabase";
-// ✅ [TUGAS 1] Import Firebase dari lib (menggantikan hardcoded config)
-import { db, GAS_API_URL } from "./lib/firebase";
-import { collection, getDoc, getDocs, doc, updateDoc, query, where } from "firebase/firestore";
+// ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ [TUGAS 1] Import Firebase dari lib (menggantikan hardcoded config)
 import toast, { Toaster } from 'react-hot-toast';
 import Swal from 'sweetalert2';
-// ✅ [TUGAS 1] Import helper functions dari utils
+// ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ [TUGAS 1] Import helper functions dari utils
 import {
-    formatDateTime, calculateDuration, getDurationMins, formatDurLabel,
-    isWithinPeriod, getWaLink,
-    parseJastipItems, parseJastipNote, parseJastipItemsObjects,
-    parseOjekDetails, parseKirimDetails
+    getDurationMins, formatDurLabel,
+    isWithinPeriod,
+    parseJastipItemsObjects,
+    parseOjekDetails, parseKirimDetails, parseTitipanObjects
 } from "./utils/helpers";
-// ✅ [LEVEL 2 #6] Generator struk canvas dipindahkan ke utils
+// ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ [LEVEL 2 #6] Generator struk canvas dipindahkan ke utils
 import { generateReceiptBlob } from "./utils/receiptGenerator";
-// ✅ [TUGAS 1] Import komponen UI dari components/
-import ServiceBadge from "./components/ui/ServiceBadge";
-import CustomCourierSelect from "./components/ui/CustomCourierSelect";
+// ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ [TUGAS 1] Import komponen UI dari components/
 import NotifToast from "./components/ui/NotifToast";
 import ImageLightbox from "./components/ui/ImageLightbox";
 import EditOrderModal from "./components/modals/EditOrderModal";
+import EditTitipanModal from "./components/modals/EditTitipanModal";
 import ReportAttachmentModal from "./components/modals/ReportAttachmentModal";
 import HrModal from "./components/modals/HrModal";
 import ManualOrderModal from "./components/modals/ManualOrderModal";
@@ -28,14 +25,15 @@ import KendalaModal from "./components/modals/KendalaModal";
 import CourierSettingsModal from "./components/modals/CourierSettingsModal";
 import ResetPinModal from "./components/modals/ResetPinModal";
 import EditOngkirModal from "./components/modals/EditOngkirModal";
+import MonitoringChatModal from "./components/modals/MonitoringChatModal";
 import AdminNav from "./components/admin/AdminNav";
 import CourierNav from "./components/courier/CourierNav";
 import InternalChatList from "./components/chat/InternalChatList";
 import InternalChatRoom from "./components/chat/InternalChatRoom";
 import useLiveChat from "./hooks/useLiveChat";
-// ✅ [LEVEL 2 #7] Halaman Login di-extract ke pages/
+// ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ [LEVEL 2 #7] Halaman Login di-extract ke pages/
 import LoginPage from "./pages/LoginPage";
-// ✅ [LEVEL 2 #8] Tab Profil Kurir di-extract ke pages/courier/
+// ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ [LEVEL 2 #8] Tab Profil Kurir di-extract ke pages/courier/
 import CourierProfilTab from "./pages/courier/CourierProfilTab";
 // Tab Pelanggaran Kurir telah dipindah ke dalam CourierAnalitikTab
 // [LEVEL 3 #14] Tab Riwayat dan Analitik Kurir di-extract ke pages/courier/
@@ -43,7 +41,7 @@ import CourierRiwayatTab from "./pages/courier/CourierRiwayatTab";
 import CourierAnalitikTab from "./pages/courier/CourierAnalitikTab";
 // [LEVEL 4 #16] Tab Tugas Aktif Kurir di-extract ke pages/courier/
 import CourierTugasAktifTab from "./pages/courier/CourierTugasAktifTab";
-// ✅ [LEVEL 2 #10] Tab Manajemen Tim/HRD Admin di-extract ke pages/admin/
+// ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ [LEVEL 2 #10] Tab Manajemen Tim/HRD Admin di-extract ke pages/admin/
 import AdminTimTab from "./pages/admin/AdminTimTab";
 // [LEVEL 3 #11] Tab Manajemen Publik (Portal UMKM & Testimoni) di-extract ke pages/admin/
 import AdminPortalTab from "./pages/admin/AdminPortalTab";
@@ -114,15 +112,14 @@ export default function App() {
     const [courierAnalyticsOrders, setCourierAnalyticsOrders] = useState([]);
 
     // === STATE PENGADUAN (LAPORAN CUSTOMER) ===
-    const [reportsData, setReportsData] = useState([]);
-    const [isFetchingReports, setIsFetchingReports] = useState(false);
-    const [pengaduanFilterTab, setPengaduanFilterTab] = useState('all');
+    const [, setReportsData] = useState([]);
+    const [, setIsFetchingReports] = useState(false);
 
 
     // === STATE & FUNGSI MANAJEMEN PUBLIK (PORTAL UMKM & TESTIMONI) ===
     const [portalTab, setPortalTab] = useState('umkm');
     const [searchVerifiedToko, setSearchVerifiedToko] = useState('');
-    const [isPortalLoading, setIsPortalLoading] = useState(false);
+    const [isPortalLoading] = useState(false);
     const [portalUmkmData, setPortalUmkmData] = useState([]);
     const [portalTestimoniData, setPortalTestimoniData] = useState([]); // Tambahin sekalian kalau belum ada
     const [isLoadingTestimoni, setIsLoadingTestimoni] = useState(false);
@@ -138,7 +135,7 @@ export default function App() {
     };
 
     // === FUNGSI LOAD & TOGGLE STATUS CUSTOM ORDER ===
-    const loadCustomOrderStatus = async () => {
+    const loadCustomOrderStatus = useCallback(async () => {
         try {
             const { data, error } = await supabase
                 .from('merchants')
@@ -157,7 +154,7 @@ export default function App() {
         } catch (e) {
             console.error('Error loading custom order status:', e);
         }
-    };
+    }, []);
 
     const handleToggleCustomOrder = async () => {
         if (!customOrderMerchantId || isTogglingCustomOrder) return;
@@ -177,7 +174,7 @@ export default function App() {
                 .eq('id', customOrderMerchantId);
             if (error) throw error;
             setIsCustomOrderOpen(newStatus);
-            toast.success(newStatus ? '✅ Layanan Custom Order DIBUKA!' : '🔒 Layanan Custom Order DITUTUP!');
+            toast.success(newStatus ? 'ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Layanan Custom Order DIBUKA!' : 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬â„¢ Layanan Custom Order DITUTUP!');
         } catch (e) {
             console.error('Error toggling custom order:', e);
             toast.error('Gagal mengubah status layanan.');
@@ -186,122 +183,17 @@ export default function App() {
         }
     };
 
-    const handleTeruskanPengaduan = async (report) => {
-        const { value: notes } = await Swal.fire({
-            title: 'Teruskan Laporan',
-            input: 'textarea',
-            inputLabel: 'Catatan untuk Terlapor (Kurir/Toko)',
-            inputPlaceholder: 'Masukkan pesan teguran/peringatan yang akan dilihat oleh pihak terlapor...',
-            showCancelButton: true,
-            confirmButtonText: 'Kirim',
-            cancelButtonText: 'Batal',
-            inputValidator: (value) => {
-                if (!value) {
-                    return 'Catatan tidak boleh kosong!'
-                }
-            }
-        });
-
-        if (notes) {
-            const toastId = toast.loading("Meneruskan laporan...");
-            try {
-                const { error } = await supabase
-                    .from('reports')
-                    .update({
-                        status: 'forwarded',
-                        admin_notes: notes,
-                        forwarded_at: new Date().toISOString()
-                    })
-                    .eq('id', report.id);
-
-                if (error) throw error;
-                toast.success("Laporan berhasil diteruskan", { id: toastId });
-                fetchReportsData();
-            } catch (error) {
-                console.error("Error forwarding report:", error);
-                toast.error("Gagal meneruskan laporan", { id: toastId });
-            }
-        }
-    };
-
-    const handleResolution = async (report, action) => {
-        const actionLabel = action === 'suspend' ? 'Suspend Akun' : 'Jadikan Peringatan';
-        const result = await Swal.fire({
-            title: `${actionLabel}?`,
-            text: action === 'suspend'
-                ? `Apakah Anda yakin ingin MENSUSPEND ${report.target_type === 'merchant' ? 'toko/mitra' : 'kurir'} ini? Akun mereka akan dibekukan.`
-                : `Apakah Anda yakin ingin memberikan PERINGATAN kepada ${report.target_type === 'merchant' ? 'toko/mitra' : 'kurir'} ini?`,
-            icon: action === 'suspend' ? 'warning' : 'question',
-            showCancelButton: true,
-            confirmButtonColor: action === 'suspend' ? '#d33' : '#eab308',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: `Ya, ${actionLabel}`,
-            cancelButtonText: 'Batal'
-        });
-
-        if (result.isConfirmed) {
-            const toastId = toast.loading("Memproses keputusan...");
-            try {
-                // Update tabel reports
-                const { error: reportError } = await supabase
-                    .from('reports')
-                    .update({ status: 'resolved', resolution_action: action })
-                    .eq('id', report.id);
-
-                if (reportError) throw reportError;
-
-                // Terapkan aksi ke target
-                if (report.target_type === 'courier') {
-                    if (action === 'suspend') {
-                        // Suspend kurir (tambah BANNED_ ke pin)
-                        const { data: empData } = await supabase.from('employees').select('pin').eq('id', report.target_id).single();
-                        if (empData && !empData.pin.startsWith('BANNED_')) {
-                            const newPin = "BANNED_" + empData.pin;
-                            await supabase.from('employees').update({ pin: newPin }).eq('id', report.target_id);
-                        }
-                    } else if (action === 'warning') {
-                        // Tambah warning_points kurir
-                        const { data: empData } = await supabase.from('employees').select('warning_points').eq('id', report.target_id).single();
-                        const currentPoints = empData?.warning_points || 0;
-                        await supabase.from('employees').update({ warning_points: currentPoints + 1 }).eq('id', report.target_id);
-                    }
-                } else if (report.target_type === 'merchant') {
-                    if (action === 'suspend') {
-                        // Suspend toko
-                        await supabase.from('merchants').update({
-                            status: 'suspended',
-                            alasan_suspend: 'Dilaporkan oleh customer atas pelanggaran pelayanan.'
-                        }).eq('id', report.target_id);
-                    } else if (action === 'warning') {
-                        // Tambah warning_points toko
-                        const { data: umkmData } = await supabase.from('merchants').select('warning_points').eq('id', report.target_id).single();
-                        const currentPoints = umkmData?.warning_points || 0;
-                        await supabase.from('merchants').update({ warning_points: currentPoints + 1 }).eq('id', report.target_id);
-                    }
-                }
-
-                toast.success(`Keputusan berhasil: ${actionLabel}`, { id: toastId });
-                fetchReportsData();
-                // [LEVEL 3 #11] fetchPortalData() pindah ke AdminPortalTab (auto-refetch saat tab portal dibuka)
-                fetchData();
-            } catch (error) {
-                console.error("Error resolving report:", error);
-                toast.error("Gagal memproses keputusan", { id: toastId });
-            }
-        }
-    };
-
-
-    const fetchReportsData = async () => {
+    const fetchReportsData = useCallback(async () => {
         setIsFetchingReports(true);
         try {
             const { data, error } = await supabase
                 .from('reports')
                 .select(`
-                    *,
+                    id, customer_id, order_id, target_id, target_type, reason, status, admin_notes, resolution_action, forwarded_at, target_feedback, feedback_at, created_at,
                     orders ( id, raw_order_text, status, kendala_info, is_deleted, inputted_by )
                 `)
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .limit(200);
             if (error) throw error;
             setReportsData(data || []);
         } catch (error) {
@@ -310,26 +202,27 @@ export default function App() {
         } finally {
             setIsFetchingReports(false);
         }
-    };
+    }, []);
 
-    const fetchCourierReportsData = async () => {
-        if (!user || user.role !== 'courier') return;
+    const fetchCourierReportsData = useCallback(async (courierUser, updateCourierReports) => {
+        if (!courierUser || courierUser.role !== 'courier') return;
         try {
             const { data, error } = await supabase
                 .from('reports')
                 .select(`
-                    *,
+                    id, customer_id, order_id, target_id, target_type, reason, status, admin_notes, resolution_action, forwarded_at, target_feedback, feedback_at, created_at,
                     orders ( id, raw_order_text, status, kendala_info, is_deleted, inputted_by )
                 `)
-                .eq('target_id', user.id)
+                .eq('target_id', courierUser.id)
                 .eq('target_type', 'courier')
                 .in('status', ['forwarded', 'resolved'])
-                .order('created_at', { ascending: false });
-            if (!error && data) setCourierReports(data);
+                .order('created_at', { ascending: false })
+                .limit(100);
+            if (!error && data) updateCourierReports(data);
         } catch (e) {
             console.error(e);
         }
-    };
+    }, []);
 
     const handleSubmitFeedback = async (reportId, feedbackText) => {
         if (!feedbackText.trim()) return toast.error("Feedback tidak boleh kosong");
@@ -345,7 +238,7 @@ export default function App() {
 
             if (error) throw error;
             toast.success("Tanggapan berhasil dikirim", { id: toastId });
-            fetchCourierReportsData();
+            fetchCourierReportsData(user, setCourierReports);
         } catch (error) {
             console.error(error);
             toast.error("Gagal mengirim tanggapan", { id: toastId });
@@ -367,10 +260,13 @@ export default function App() {
     const [editLines, setEditLines] = useState([]);
     const [editNote, setEditNote] = useState("");
 
-    // Auto-pecah teks, buang header format, dan amankan note ke field terpisah
-    useEffect(() => {
-        if (isEditModalOpen && editingOrder) {
-            const rawText = editingOrder.text || "";
+    const [isTitipanModalOpen, setIsTitipanModalOpen] = useState(false);
+    const [editingTitipanOrder, setEditingTitipanOrder] = useState(null);
+    const [titipanLines, setTitipanLines] = useState([""]);
+
+    // Siapkan state editor saat modal dibuka, bukan di Effect, agar tidak memicu render berantai.
+    const openEditOrderModal = (order) => {
+            const rawText = order.raw_order_text || "";
 
             // 1. Tangkap Note secara cerdas (pisahkan dari teks utama)
             const noteMatch = rawText.match(/note:\s*([\s\S]*)/i);
@@ -394,8 +290,17 @@ export default function App() {
                 });
 
             setEditLines(filteredLines);
-        }
-    }, [isEditModalOpen, editingOrder]);
+            setEditingOrder({ id: order.id, text: rawText, status: order.status, kendala_info: order.kendala_info });
+            setIsEditModalOpen(true);
+    };
+
+    const openEditTitipanModal = (order) => {
+            const rawText = order.raw_order_text || "";
+            const existing = parseTitipanObjects(rawText);
+            setTitipanLines(existing.length > 0 ? existing.map(item => item.name) : [""]);
+            setEditingTitipanOrder({ id: order.id, text: rawText });
+            setIsTitipanModalOpen(true);
+    };
 
     // FUNGSI KENDALI BARIS
     const handleEditLineChange = (idx, val) => {
@@ -410,11 +315,14 @@ export default function App() {
         setEditLines(newLines);
     };
 
+    const handleTitipanLineChange = (idx, value) => setTitipanLines(prev => { const n = [...prev]; n[idx] = value; return n; });
+    const handleAddTitipanLine = () => setTitipanLines(prev => [...prev, ""]);
+    const handleRemoveTitipanLine = (idx) => setTitipanLines(prev => prev.length === 1 ? [""] : prev.filter((_, i) => i !== idx));
+
     const [isManualModalOpen, setIsManualModalOpen] = useState(false);
     const [manualForm, setManualForm] = useState({ name: '', wa: '', address: '', text: '', type: 'Belanja', fee: '', courier: '' });
     const [manualImages, setManualImages] = useState([]); // BERUBAH JADI ARRAY
     const [isUploadingManual, setIsUploadingManual] = useState(false);
-    const [showCustSuggestions, setShowCustSuggestions] = useState(false);
 
     // HACK: Lightbox Slider Data
     const [lightboxData, setLightboxData] = useState({ urls: [], index: 0 });
@@ -430,8 +338,6 @@ export default function App() {
     const [courierFilterStartDate, setCourierFilterStartDate] = useState('');
     const [courierFilterEndDate, setCourierFilterEndDate] = useState('');
     const [courierFilterService, setCourierFilterService] = useState('all');
-    const [courierFilterStatus, setCourierFilterStatus] = useState('all');
-    const [courierHistorySearch, setCourierHistorySearch] = useState('');
 
     // STATE MANAJEMEN TIM (HRD)
     const [allEmployees, setAllEmployees] = useState([]);
@@ -451,19 +357,15 @@ export default function App() {
     const [isSubmittingCourierSettings, setIsSubmittingCourierSettings] = useState(false);
 
     // STATE UNTUK MODAL SETEL PIN BARU (DARI EMAIL RESET)
-    const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(false);
+    const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(
+        () => window.location.hash.includes('type=recovery')
+    );
     const [resetPinForm, setResetPinForm] = useState({ new_pin: '', confirm_pin: '' });
     const [isSubmittingResetPin, setIsSubmittingResetPin] = useState(false);
 
     // Auto-deteksi jika user datang dari Link Reset Email Supabase
     useEffect(() => {
-        // 1. Cek dari hash URL
-        const hash = window.location.hash;
-        if (hash && hash.includes('type=recovery')) {
-            setIsResetPasswordModalOpen(true);
-        }
-
-        // 2. Cek dari listener Auth Supabase
+        // Listener Auth menangani link recovery yang diproses setelah aplikasi dimuat.
         const { data: authListener } = supabase.auth.onAuthStateChange(async (event) => {
             if (event === 'PASSWORD_RECOVERY') {
                 setIsResetPasswordModalOpen(true);
@@ -546,27 +448,11 @@ export default function App() {
             setUser(prev => ({ ...prev, name: f.full_name }));
             setCourierProfile(prev => ({ ...prev, ...f, email: f.email.trim() }));
             toast.success("Profil berhasil diperbarui!", { id: toastId });
-            fetchData();
             return true;
         } catch (err) {
             toast.error(`Gagal menyimpan: ${err.message}`, { id: toastId });
             return false;
         }
-    };
-
-
-    const openCourierSettings = async () => {
-        try {
-            const { data, error } = await supabase.from('employees').select('*').eq('id', user.id).maybeSingle();
-            if (data && !error) {
-                setCourierSettingsForm({
-                    phone: data.phone || '', bank_name: data.bank_name || '', account_number: data.account_number || '',
-                    bank_name_2: data.bank_name_2 || '', account_number_2: data.account_number_2 || '',
-                    current_pin: '', new_pin: '', confirm_pin: ''
-                });
-                setIsCourierSettingsOpen(true);
-            }
-        } catch (err) { console.error(err); }
     };
 
 
@@ -619,15 +505,24 @@ export default function App() {
             }).eq('id', user.id);
 
             if (updateError) throw updateError;
+            setCourierProfile(prev => prev ? {
+                ...prev,
+                phone: f.phone,
+                pin: finalPin,
+                bank_name: f.bank_name || null,
+                account_number: f.account_number || null,
+                bank_name_2: f.bank_name_2 || null,
+                account_number_2: f.account_number_2 || null
+            } : prev);
             toast.success("Profil & PIN berhasil diperbarui!", { id: toastId });
-            setIsCourierSettingsOpen(false); fetchData();
+            setIsCourierSettingsOpen(false);
         } catch (err) { toast.error(`Gagal menyimpan: ${err.message}`, { id: toastId }); } finally { setIsSubmittingCourierSettings(false); }
     };
 
     const handleForgotPassword = async () => {
         // 1. Munculin pop-up minta email
         const { value: email } = await Swal.fire({
-            title: '🔑 Lupa PIN Login?',
+            title: 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Ëœ Lupa PIN Login?',
             text: 'Masukkan email terdaftar kamu. Link reset password akan dikirim ke email:',
             input: 'email',
             inputPlaceholder: 'email@tutahtitah.id',
@@ -661,10 +556,10 @@ export default function App() {
     // ========================================================
 
     const [jastipPrices, setJastipPrices] = useState(() => {
-        try { return JSON.parse(localStorage.getItem('tutahJastipPrices')) || {}; } catch (e) { return {}; }
+        try { return JSON.parse(localStorage.getItem('tutahJastipPrices')) || {}; } catch { return {}; }
     });
     const [jastipChecked, setJastipChecked] = useState(() => {
-        try { return JSON.parse(localStorage.getItem('tutahJastipChecked')) || {}; } catch (e) { return {}; }
+        try { return JSON.parse(localStorage.getItem('tutahJastipChecked')) || {}; } catch { return {}; }
     });
 
     const [isKendalaModalOpen, setIsKendalaModalOpen] = useState(false);
@@ -686,8 +581,8 @@ export default function App() {
 
 
     const showNotif = (message, type) => { setNotif({ message, type }); setTimeout(() => setNotif({ message: "", type: "" }), 3000); };
-    const requestNotificationPermission = () => { if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") Notification.requestPermission(); };
-    const playAlertSound = () => { try { new Audio(NOTIF_SOUND_URL).play().catch(() => { }); } catch (e) { } };
+    const requestNotificationPermission = useCallback(() => { if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") Notification.requestPermission(); }, []);
+    const playAlertSound = () => { try { new Audio(NOTIF_SOUND_URL).play().catch(() => undefined); } catch { /* Browser tidak mendukung audio. */ } };
     const showPushNotification = (title, body) => { if ("Notification" in window && Notification.permission === "granted") new Notification(title, { body, icon: "/logo-tutahtitah-biru.webp" }); };
 
     // =======================================================================
@@ -695,9 +590,9 @@ export default function App() {
     // =======================================================================
 
     // Cek apakah belum ada Admin sama sekali di database (Untuk First Time Setup)
-    const checkInitialSetup = async () => {
+    const checkInitialSetup = useCallback(async () => {
         try {
-            const { count, error } = await supabase.from('employees').select('*', { count: 'exact', head: true }).eq('role', 'admin');
+            const { count, error } = await supabase.from('employees').select('id', { count: 'exact', head: true }).eq('role', 'admin');
             if (!error && count === 0) {
                 setNeedsInitialSetup(true);
             } else {
@@ -705,40 +600,49 @@ export default function App() {
                 setIsSetupMode(false);
             }
         } catch (err) { console.error("Error checking setup:", err); }
-    };
+    }, []);
 
-    const fetchUserProfile = async (authId) => {
-        try {
-            const { data, error } = await supabase.from('employees').select('*').eq('auth_id', authId).maybeSingle();
-            if (data && !error) {
-                setUser({ role: data.role, name: data.full_name, id: data.id, auth_id: authId, is_super_admin: data.is_super_admin });
-                requestNotificationPermission();
-            } else {
-                handleLogout();
-            }
-        } catch (err) { console.error("Error fetching profile:", err); }
-    };
+    const handleLogout = useCallback(async () => {
+        await supabase.auth.signOut();
+        setUser(null);
+        setAllOrders([]);
+    }, []);
 
     useEffect(() => {
-        checkInitialSetup();
-        loadCustomOrderStatus(); // Load status buka/tutup custom order
+        let isMounted = true;
+        const initialize = async () => {
+            await Promise.all([checkInitialSetup(), loadCustomOrderStatus()]);
+        };
+        const fetchUserProfile = async (authId) => {
+            try {
+                const { data, error } = await supabase.from('employees').select('id, auth_id, full_name, role, is_super_admin').eq('auth_id', authId).maybeSingle();
+                if (!isMounted) return;
+                if (data && !error) {
+                    setUser({ role: data.role, name: data.full_name, id: data.id, auth_id: authId, is_super_admin: data.is_super_admin });
+                    requestNotificationPermission();
+                } else {
+                    void handleLogout();
+                }
+            } catch (err) { console.error("Error fetching profile:", err); }
+        };
+        const bootstrapTimer = window.setTimeout(() => { void initialize(); }, 0);
 
         supabase.auth.getSession().then(({ data: { session } }) => {
             if (session) {
-                fetchUserProfile(session.user.id);
+                void fetchUserProfile(session.user.id);
             }
         });
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             if (session) {
-                fetchUserProfile(session.user.id);
+                void fetchUserProfile(session.user.id);
             } else {
                 setUser(null);
             }
         });
 
-        return () => subscription.unsubscribe();
-    }, []);
+        return () => { isMounted = false; window.clearTimeout(bootstrapTimer); subscription.unsubscribe(); };
+    }, [checkInitialSetup, handleLogout, loadCustomOrderStatus, requestNotificationPermission]);
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -769,26 +673,14 @@ export default function App() {
             showNotif(`Login berhasil! Memuat sistem...`, "success");
             setEmailInput("");
             setPinInput("");
-        } catch (error) {
+        } catch {
             showNotif(`Sistem Error`, "error");
         } finally {
             setIsLoggingIn(false);
         }
     };
 
-    const handleLogout = async () => {
-        await supabase.auth.signOut();
-        setUser(null);
-        setAllOrders([]);
-    };
-
     // FORCE DEFAULT TAB KE TUGAS KETIKA USER LOGIN
-    useEffect(() => {
-        if (user && user.role === 'courier') {
-            setCourierMainTab('tugas');
-        }
-    }, [user]);
-
     const openEditEmployee = (emp) => {
         setHrForm({
             id: emp.id, role: emp.role, full_name: emp.full_name, email: emp.email || '',
@@ -803,11 +695,12 @@ export default function App() {
         if (!confirmDelete) return;
 
         try {
-            const randomPin = "BANNED_" + Math.random().toString(36).substring(7);
+            const randomPin = `BANNED_${crypto.randomUUID()}`;
             const { error } = await supabase.from('employees').update({ pin: randomPin }).eq('id', empId);
             if (error) throw error;
+            setAllEmployees(prev => prev.map(employee => employee.id === empId ? { ...employee, pin: randomPin } : employee));
+            setCouriersList(prev => prev.map(courier => courier.id === empId ? { ...courier, pin: randomPin } : courier));
             showNotif(`Akses ${empName} berhasil dicabut!`, "success");
-            fetchData();
         } catch (err) { showNotif(`Gagal hapus: ${err.message}`, "error"); }
     };
 
@@ -821,8 +714,9 @@ export default function App() {
         try {
             const { error } = await supabase.from('employees').update({ pin: newPin }).eq('id', empId);
             if (error) throw error;
+            setAllEmployees(prev => prev.map(employee => employee.id === empId ? { ...employee, pin: newPin } : employee));
+            setCouriersList(prev => prev.map(courier => courier.id === empId ? { ...courier, pin: newPin } : courier));
             showNotif(`Akses ${empName} berhasil diaktifkan kembali!`, "success");
-            fetchData();
         } catch (err) { showNotif(`Gagal mengaktifkan: ${err.message}`, "error"); }
     };
 
@@ -840,7 +734,7 @@ export default function App() {
         try {
             if (f.id) {
                 // ==========================================================
-                // 🌟 LOGIKA EDIT DATA & REAL ganti password (FIXED!) 🌟
+                // ÃƒÂ°Ã…Â¸Ã…â€™Ã…Â¸ LOGIKA EDIT DATA & REAL ganti password (FIXED!) ÃƒÂ°Ã…Â¸Ã…â€™Ã…Â¸
                 // ==========================================================
 
                 // 1. Ambil data auth_id, pin, dan email lama milik karyawan ini
@@ -861,7 +755,7 @@ export default function App() {
                     if (authUpdateError) throw new Error(`Gagal update password di Auth: ${authUpdateError.message}`);
                 }
 
-                // 🌟 INTEGRASI BARU: Jika EMAIL dirubah, panggil fungsi SQL RPC Email
+                // ÃƒÂ°Ã…Â¸Ã…â€™Ã…Â¸ INTEGRASI BARU: Jika EMAIL dirubah, panggil fungsi SQL RPC Email
                 if (empData.email !== f.email.trim()) {
                     const { error: authEmailError } = await supabase.rpc('update_employee_email', {
                         user_id: empData.auth_id,
@@ -909,7 +803,6 @@ export default function App() {
                 setIsSetupMode(false);
             } else {
                 setIsHrModalOpen(false);
-                fetchData();
             }
 
             setHrForm({ id: null, role: 'courier', full_name: '', email: '', phone: '', pin: '', bank_name: '', account_number: '', bank_name_2: '', account_number_2: '' });
@@ -924,7 +817,7 @@ export default function App() {
     const fetchAllHistoricalOrders = async () => {
         setLoading(true);
         try {
-            const { data: ordersData } = await supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers, inputted_by").eq("is_deleted", false).order("created_at", { ascending: false });
+            const { data: ordersData } = await supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers, inputted_by").eq("is_deleted", false).order("created_at", { ascending: false }).limit(3000);
             if (ordersData) setAllOrders(ordersData);
             toast.success("Berhasil memuat seluruh riwayat pesanan");
         } catch (error) {
@@ -935,75 +828,73 @@ export default function App() {
         }
     };
 
-    const fetchData = async () => {
-        setLoading(true);
-        try {
-            const oneMonthAgo = new Date();
-            oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-            const { data: activeOrders } = await supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers, inputted_by").in("status", ["pending", "processing", "hold", "waiting_customer", "searching_courier", "courier_found", "on_delivery", "picking_up", "item_ready", "delivering"]).eq("is_deleted", false).order("created_at", { ascending: false });
-            const ordersData = [...(activeOrders || [])];
-            const { data: couriersData } = await supabase.from("employees").select("id, full_name, pin, role, warning_points, bank_name, account_number, bank_name_2, account_number_2, is_super_admin, is_online").eq("role", "courier");
-            const { data: allEmpData } = await supabase.from("employees").select("id, full_name, role, email, phone, pin, bank_name, account_number, bank_name_2, account_number_2, warning_points, is_online, auth_id").order("role", { ascending: true });
-            
-            let customersData = [];
-            if (user && (user.role === 'admin' || user.role === 'superadmin')) {
-                const { data } = await supabase.from("customers").select("id, name, phone, address, auth_id, created_at").order("created_at", { ascending: false }).limit(3000);
-                if (data) customersData = data;
-            }
+    const fetchActiveOrders = useCallback(async () => {
+        const { data, error } = await supabase.from("orders")
+            .select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers, inputted_by")
+            .in("status", ["pending", "processing", "hold", "waiting_customer", "searching_courier", "courier_found", "on_delivery", "picking_up", "item_ready", "delivering"])
+            .eq("is_deleted", false).order("created_at", { ascending: false }).limit(500);
+        if (error) throw error;
+        setAllOrders(data || []);
+    }, []);
 
-            const { data: rawRatingsData } = await supabase.from("ratings").select("id, order_id, target_id, target_type, rating, review").eq("target_type", "courier").order("created_at", { ascending: false }).limit(100);
+    const fetchEmployees = useCallback(async () => {
+        const [couriersResult, employeesResult] = await Promise.all([
+            supabase.from("employees").select("id, full_name, pin, role, warning_points, bank_name, account_number, bank_name_2, account_number_2, is_super_admin, is_online").eq("role", "courier").limit(500),
+            supabase.from("employees").select("id, full_name, role, email, phone, pin, bank_name, account_number, bank_name_2, account_number_2, warning_points, is_online, auth_id").order("role", { ascending: true }).limit(500)
+        ]);
+        if (couriersResult.error) throw couriersResult.error;
+        if (employeesResult.error) throw employeesResult.error;
+        setCouriersList(couriersResult.data || []);
+        setAllEmployees(employeesResult.data || []);
+    }, []);
 
-            // Filter out ratings from soft-deleted AND hard-deleted orders manually
-            let validOrderIds = new Set();
-            if (rawRatingsData && rawRatingsData.length > 0) {
-                const orderIds = [...new Set(rawRatingsData.map(r => r.order_id).filter(id => id != null))];
-                if (orderIds.length > 0) {
-                    const { data: existingOrders } = await supabase.from("orders").select("id, is_deleted").in("id", orderIds);
-                    if (existingOrders) {
-                        validOrderIds = new Set(existingOrders.filter(o => o.is_deleted !== true).map(o => o.id));
-                    }
-                }
-            }
-            const ratingsData = rawRatingsData ? rawRatingsData.filter(r => validOrderIds.has(r.order_id)) : null;
+    const fetchCustomers = useCallback(async () => {
+        const { data, error } = await supabase.from("customers").select("id, name, phone, address, auth_id, created_at").order("created_at", { ascending: false }).limit(3000);
+        if (error) throw error;
+        setCustomersList(data || []);
+    }, []);
 
-            if (user && user.role === 'courier') {
-                const { data: myProfile } = await supabase.from('employees').select('*').eq('id', user.id).maybeSingle();
-                if (myProfile) {
-                    setCourierProfile(myProfile);
-                }
-            }
+    const fetchCourierProfile = useCallback(async (courierId) => {
+        const { data, error } = await supabase.from('employees')
+            .select('id, auth_id, full_name, email, phone, pin, role, bank_name, account_number, bank_name_2, account_number_2, warning_points, is_online, is_super_admin')
+            .eq('id', courierId).maybeSingle();
+        if (error) throw error;
+        setCourierProfile(data);
+    }, []);
 
-            // ✅ KODE BARU
-            const { data: settingsData } = await supabase.from("app_settings").select("*").eq("id", 1).maybeSingle();
+    const fetchRatingsAndSettings = useCallback(async () => {
+        const [ratingsResult, settingsResult] = await Promise.all([
+            supabase.from("ratings").select("id, order_id, target_id, target_type, rating, review").eq("target_type", "courier").order("created_at", { ascending: false }).limit(100),
+            supabase.from("app_settings").select("id, profit_share, kas_share").eq("id", 1).maybeSingle()
+        ]);
+        if (ratingsResult.error) throw ratingsResult.error;
+        if (settingsResult.error) throw settingsResult.error;
 
-            if (ordersData) setAllOrders(ordersData);
-            if (couriersData) setCouriersList(couriersData);
-            if (allEmpData) setAllEmployees(allEmpData);
-            if (customersData) setCustomersList(customersData);
-            if (ratingsData) {
-                const stats = {};
-                const ordRatings = {};
-                ratingsData.forEach(r => {
-                    if (r.order_id) ordRatings[r.order_id] = r;
-                    if (r.target_id) {
-                        if (!stats[r.target_id]) stats[r.target_id] = { sum: 0, count: 0 };
-                        stats[r.target_id].sum += r.rating;
-                        stats[r.target_id].count += 1;
-                    }
-                });
-                const finalStats = {};
-                for (const [id, data] of Object.entries(stats)) {
-                    finalStats[id] = { average: (data.sum / data.count).toFixed(1), count: data.count };
-                }
-                setCourierRatingStats(finalStats);
-                setOrderRatings(ordRatings);
+        const rawRatings = ratingsResult.data || [];
+        const orderIds = [...new Set(rawRatings.map(rating => rating.order_id).filter(orderId => orderId != null))];
+        const { data: existingOrders, error: ordersError } = orderIds.length
+            ? await supabase.from("orders").select("id, is_deleted").in("id", orderIds).limit(100)
+            : { data: [], error: null };
+        if (ordersError) throw ordersError;
+
+        const validOrderIds = new Set((existingOrders || []).filter(order => order.is_deleted !== true).map(order => order.id));
+        const stats = {};
+        const orderRatingsById = {};
+        rawRatings.filter(rating => validOrderIds.has(rating.order_id)).forEach(rating => {
+            if (rating.order_id) orderRatingsById[rating.order_id] = rating;
+            if (rating.target_id) {
+                if (!stats[rating.target_id]) stats[rating.target_id] = { sum: 0, count: 0 };
+                stats[rating.target_id].sum += rating.rating;
+                stats[rating.target_id].count += 1;
             }
-            if (settingsData) {
-                setAdminProfitShare(settingsData.profit_share !== undefined ? settingsData.profit_share : 10);
-                setKasShare(settingsData.kas_share !== undefined ? settingsData.kas_share : 10);
-            }
-        } catch (err) { console.error(err); } finally { setLoading(false); }
-    };
+        });
+        setCourierRatingStats(Object.fromEntries(Object.entries(stats).map(([id, value]) => [id, { average: (value.sum / value.count).toFixed(1), count: value.count }])));
+        setOrderRatings(orderRatingsById);
+        if (settingsResult.data) {
+            setAdminProfitShare(settingsResult.data.profit_share ?? 10);
+            setKasShare(settingsResult.data.kas_share ?? 10);
+        }
+    }, []);
 
 
     // ==========================================
@@ -1045,31 +936,49 @@ export default function App() {
         return { start: null, end: null };
     };
 
-    const fetchAnalyticsData = async (role, period, customStart, customEnd) => {
+    const fetchAnalyticsData = useCallback(async (role, period, customStart, customEnd) => {
         if (period === 'custom' && (!customStart || !customEnd)) return;
         try {
             const { start, end } = getPeriodDateRange(period, customStart, customEnd);
-            let query = supabase.from("orders").select("id, status, total_price, delivery_fee, tipe_layanan, created_at, completed_at, dispatched_at, assigned_courier_id, failed_couriers").in("status", ["completed", "cancelled", "unreachable"]).eq("is_deleted", false).order("created_at", { ascending: false });
+            
+            let allData = [];
+            let from = 0;
+            const pageSize = 1000;
+            
+            while (true) {
+                let pagedQuery = supabase.from("orders")
+                    .select("id, status, total_price, delivery_fee, tipe_layanan, created_at, completed_at, dispatched_at, assigned_courier_id, failed_couriers")
+                    .in("status", ["completed", "cancelled", "unreachable"])
+                    .eq("is_deleted", false)
+                    .order("created_at", { ascending: false })
+                    .range(from, from + pageSize - 1);
+                    
+                if (start) pagedQuery = pagedQuery.gte("created_at", start);
+                if (end) pagedQuery = pagedQuery.lte("created_at", end);
 
-            if (start) query = query.gte("created_at", start);
-            if (end) query = query.lte("created_at", end);
-            // No limit for analytics to ensure 100% accuracy
-
-            const { data, error } = await query;
-            if (error) throw error;
+                const { data, error } = await pagedQuery;
+                if (error) throw error;
+                
+                allData = [...allData, ...(data || [])];
+                
+                if (!data || data.length < pageSize) {
+                    break;
+                }
+                from += pageSize;
+            }
 
             if (role === 'admin') {
-                setAdminAnalyticsOrders(data || []);
+                setAdminAnalyticsOrders(allData);
             } else {
-                setCourierAnalyticsOrders(data || []);
+                setCourierAnalyticsOrders(allData);
             }
         } catch (err) {
             console.error("Error lazy loading analytics:", err);
             toast.error("Gagal menarik data analitik.");
         }
-    };
+    }, []);
 
-    const fetchHistoricalData = async (role, period, customStart, customEnd) => {
+    const fetchHistoricalData = useCallback(async (role, period, customStart, customEnd) => {
         if (period === 'custom' && (!customStart || !customEnd)) return;
         setIsFetchingHistory(true);
         try {
@@ -1102,39 +1011,43 @@ export default function App() {
         } finally {
             setIsFetchingHistory(false);
         }
-    };
+    }, [adminHistoryLimit, courierHistoryLimit, user?.id]);
 
     // Admin Lazy Load - Riwayat
     useEffect(() => {
         if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) return;
         if (adminMainTab === 'riwayat') {
-            fetchHistoricalData('admin', adminFilterPeriod, adminFilterStartDate, adminFilterEndDate);
+            const timer = window.setTimeout(() => { void fetchHistoricalData('admin', adminFilterPeriod, adminFilterStartDate, adminFilterEndDate); }, 0);
+            return () => window.clearTimeout(timer);
         }
-    }, [adminMainTab, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, user, adminHistoryLimit]);
+    }, [adminMainTab, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, user, fetchHistoricalData]);
 
     // Admin Lazy Load - Analitik
     useEffect(() => {
         if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) return;
         if (adminMainTab === 'laporan') {
-            fetchAnalyticsData('admin', adminFilterPeriod, adminFilterStartDate, adminFilterEndDate);
+            const timer = window.setTimeout(() => { void fetchAnalyticsData('admin', adminFilterPeriod, adminFilterStartDate, adminFilterEndDate); }, 0);
+            return () => window.clearTimeout(timer);
         }
-    }, [adminMainTab, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, user]);
+    }, [adminMainTab, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, user, fetchAnalyticsData]);
 
     // Courier Lazy Load - Riwayat
     useEffect(() => {
         if (!user || user.role !== 'courier') return;
         if (courierMainTab === 'riwayat') {
-            fetchHistoricalData('courier', courierFilterPeriod, courierFilterStartDate, courierFilterEndDate);
+            const timer = window.setTimeout(() => { void fetchHistoricalData('courier', courierFilterPeriod, courierFilterStartDate, courierFilterEndDate); }, 0);
+            return () => window.clearTimeout(timer);
         }
-    }, [courierMainTab, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, user, courierHistoryLimit]);
+    }, [courierMainTab, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, user, fetchHistoricalData]);
     
     // Courier Lazy Load - Analitik
     useEffect(() => {
         if (!user || user.role !== 'courier') return;
         if (courierMainTab === 'analitik') {
-            fetchAnalyticsData('courier', courierFilterPeriod, courierFilterStartDate, courierFilterEndDate);
+            const timer = window.setTimeout(() => { void fetchAnalyticsData('courier', courierFilterPeriod, courierFilterStartDate, courierFilterEndDate); }, 0);
+            return () => window.clearTimeout(timer);
         }
-    }, [courierMainTab, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, user]);
+    }, [courierMainTab, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, user, fetchAnalyticsData]);
     // ==========================================
 
     const updateGlobalSettings = async (field, newVal) => {
@@ -1150,9 +1063,16 @@ export default function App() {
 
     useEffect(() => {
         if (!user) return;
-        fetchData(); requestNotificationPermission();
-        if (user.role === 'admin') fetchReportsData();
-        if (user.role === 'courier') fetchCourierReportsData();
+        const initialFetchTimer = window.setTimeout(() => {
+            setLoading(true);
+            const initialRequests = [fetchActiveOrders(), fetchEmployees(), fetchRatingsAndSettings()];
+            if (user.role === 'admin' || user.role === 'superadmin') initialRequests.push(fetchCustomers());
+            if (user.role === 'courier') initialRequests.push(fetchCourierProfile(user.id));
+            void Promise.all(initialRequests).catch(error => console.error('Gagal memuat data aplikasi:', error)).finally(() => setLoading(false));
+            requestNotificationPermission();
+            if (user.role === 'admin' || user.role === 'superadmin') void fetchReportsData();
+            if (user.role === 'courier') void fetchCourierReportsData(user, setCourierReports);
+        }, 0);
 
         const channel = supabase.channel('realtime_all_tables')
             .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'orders' }, (p) => {
@@ -1160,12 +1080,12 @@ export default function App() {
                 // 1. ADMIN cuma dapet alarm kalau orderannya masuk dari Bot WA (status pending)
                 if (user.role === 'admin' && p.new.status === 'pending') {
                     playAlertSound();
-                    showPushNotification("🛍️ Order Baru Masuk!", `Ada orderan dari: ${p.new.customer_name || p.new.customer_wa.split('-')[0]}`);
+                    showPushNotification("ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂºÃ‚ÂÃƒÂ¯Ã‚Â¸Ã‚Â Order Baru Masuk!", `Ada orderan dari: ${p.new.customer_name || p.new.customer_wa.split('-')[0]}`);
                 }
                 // 2. KURIR dapet alarm kalau Admin input order manual & langsung di-dispatch ke kurir tsb
                 if (user.role === 'courier' && p.new.assigned_courier_id === user.id && p.new.status === 'processing') {
                     playAlertSound();
-                    showPushNotification("🚀 Tugas Baru Masuk!", "Admin memberi tugas baru. Cek aplikasi sekarang!");
+                    showPushNotification("ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ Tugas Baru Masuk!", "Admin memberi tugas baru. Cek aplikasi sekarang!");
                 }
             })
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'orders' }, (p) => {
@@ -1195,12 +1115,12 @@ export default function App() {
                     // Admin nge-dispatch tugas (dari pending/waiting ke processing)
                     if (newStatus === 'processing' && oldStatus !== 'processing') {
                         playAlertSound();
-                        showPushNotification("🚀 Tugas Baru Diterima!", "Cek layar Tugas Aktif sekarang!");
+                        showPushNotification("ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ Tugas Baru Diterima!", "Cek layar Tugas Aktif sekarang!");
                     }
                     // Admin ngebatalin orderan yang lagi dipegang kurir
                     if (newStatus === 'cancelled' && oldStatus !== 'cancelled') {
                         playAlertSound();
-                        showPushNotification("❌ Order Dibatalkan", "Admin telah membatalkan orderan ini.");
+                        showPushNotification("ÃƒÂ¢Ã‚ÂÃ…â€™ Order Dibatalkan", "Admin telah membatalkan orderan ini.");
                     }
                 }
 
@@ -1208,13 +1128,13 @@ export default function App() {
                 if (user.role === 'admin' && newStatus !== oldStatus) {
                     if (newStatus === 'hold') {
                         playAlertSound();
-                        showPushNotification("⚠️ Kurir Lapor Kendala!", `Cek Order #${p.new.id}, kurir sedang negosiasi di lapangan.`);
+                        showPushNotification("ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Kurir Lapor Kendala!", `Cek Order #${p.new.id}, kurir sedang negosiasi di lapangan.`);
                     } else if (newStatus === 'waiting_customer') {
                         playAlertSound();
-                        showPushNotification("🚩 Kurir Nyerah!", `Kurir membatalkan Order #${p.new.id}. Segera hubungi customer!`);
+                        showPushNotification("ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â© Kurir Nyerah!", `Kurir membatalkan Order #${p.new.id}. Segera hubungi customer!`);
                     } else if (newStatus === 'delivering' && p.new.tipe_layanan === 'Belanja') {
                         playAlertSound();
-                        showPushNotification("🧾 Tagihan Jastip Siap", `Order #${p.new.id} siap dikirim struknya ke customer.`);
+                        showPushNotification("ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Â¾ Tagihan Jastip Siap", `Order #${p.new.id} siap dikirim struknya ke customer.`);
                     }
                 }
             })
@@ -1250,8 +1170,8 @@ export default function App() {
             })
             .subscribe();
 
-        return () => { supabase.removeChannel(channel); };
-    }, [user]);
+        return () => { window.clearTimeout(initialFetchTimer); supabase.removeChannel(channel); };
+    }, [user, fetchActiveOrders, fetchEmployees, fetchCustomers, fetchCourierProfile, fetchRatingsAndSettings, fetchReportsData, fetchCourierReportsData, requestNotificationPermission]);
 
     const adminPendingOrders = allOrders.filter(o => o.status === 'pending');
     const adminProcessingOrders = allOrders.filter(o => o.status === 'processing' || o.status === 'hold' || o.status === 'waiting_customer' || o.status === 'delivering');
@@ -1260,13 +1180,6 @@ export default function App() {
         return ((o.status === 'completed' || o.status === 'cancelled') && o.assigned_courier_id === user?.id) || (o.failed_couriers && Array.isArray(o.failed_couriers) && o.failed_couriers.some(fc => fc.id === user?.id));
     });
 
-    const getCourierStatusIndicator = (order, courierId) => {
-        if (order.failed_couriers && Array.isArray(order.failed_couriers) && order.failed_couriers.some(fc => fc.id === courierId)) return { label: 'Gagal (Nyerah)', color: 'bg-red-100 text-red-700' };
-        if (order.status === 'completed') return { label: 'Sukses', color: 'bg-emerald-100 text-emerald-700' };
-        if (order.status === 'cancelled') return { label: 'Batal / Cancel', color: 'bg-gray-100 text-gray-700' };
-        return { label: 'Diproses', color: 'bg-blue-100 text-blue-700' };
-    };
-
     const adminAnalytics = useMemo(() => {
         try {
             const periodOrders = adminAnalyticsOrders.filter(o => isWithinPeriod(o.created_at, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate));
@@ -1274,7 +1187,6 @@ export default function App() {
 
             const totalOngkirPeriode = analitikSelesai.reduce((sum, o) => sum + (parseFloat(o.delivery_fee) || 0), 0);
             const hakAdminPure = totalOngkirPeriode * (adminProfitShare / 100);
-            const kasDasar = totalOngkirPeriode * (kasShare / 100);
 
             const totalOrdersPeriod = periodOrders.length;
             const suksesOrders = periodOrders.filter(o => o.status === 'completed').length;
@@ -1320,7 +1232,6 @@ export default function App() {
             else if (adminFilterPeriod === 'month') targetOrders = 80;
             else if (adminFilterPeriod === 'year') targetOrders = 1040;
 
-            let totalDendaGlobal = 0;
             let totalSumbanganKasGlobal = 0;
             let totalHakKurirGlobal = 0;
 
@@ -1337,8 +1248,6 @@ export default function App() {
                 const cOngkir = cOrdersSelesai.reduce((sum, o) => sum + (parseFloat(o.delivery_fee) || 0), 0);
 
                 const cDenda = (targetOrders > 0 && cTotalSelesai < targetOrders) ? (targetOrders - cTotalSelesai) * 1000 : 0;
-                totalDendaGlobal += cDenda;
-
                 const cAdminCut = cOngkir * (adminProfitShare / 100);
                 const cKasCut = cOngkir * (kasShare / 100);
                 const cPotonganKasAdmin = cAdminCut + cKasCut; // HITUNGAN BARU
@@ -1367,7 +1276,7 @@ export default function App() {
                 totalOrdersPeriod, suksesOrders, batalOrders, gagalOrders, persenSukses, persenBatal, persenGagal,
                 avgDurationAll, avgDurationBelanja, avgDurationOjek, avgDurationKirim, targetOrders
             };
-        } catch (e) {
+        } catch {
             return { periodOrders: [], analitikSelesai: [], totalOngkirPeriode: 0, hakAdminPure: 0, totalKasTermasukDenda: 0, totalHakKurirGlobal: 0, serviceData: [], trendDataTime: [], trendDataHour: [], courierPerformance: [], totalOrdersPeriod: 0, suksesOrders: 0, batalOrders: 0, gagalOrders: 0, persenSukses: 0, persenBatal: 0, persenGagal: 0, avgDurationAll: '-', avgDurationBelanja: '-', avgDurationOjek: '-', avgDurationKirim: '-', targetOrders: 0 };
         }
     }, [adminAnalyticsOrders, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, adminChartGrouping, adminProfitShare, kasShare, couriersList]);
@@ -1441,7 +1350,7 @@ export default function App() {
             const groupedByDate = {};
             flattenedHistory.forEach(o => {
                 const dateObj = new Date(o._actionTime || o.created_at);
-                let dateStr = "";
+                let dateStr;
                 if (courierChartPeriod === 'weekly') {
                     dateStr = `Mg ${getWeekNumber(dateObj)}, ${dateObj.getFullYear()}`;
                 } else if (courierChartPeriod === 'monthly') {
@@ -1470,7 +1379,7 @@ export default function App() {
                 persenGagal: totalAction > 0 ? ((countGagal / totalAction) * 100).toFixed(1) : 0,
                 pendapatan: totalPendapatan, bersih: bersihPendapatan, potongan: (totalPendapatan * (potonganPersen / 100)), denda, talangan: totalTalanganKeluar, history: flattenedHistory, potonganPersen
             };
-        } catch (e) { return { total: 0, sukses: 0, belanjaSks: 0, ojekSks: 0, kirimSks: 0, batal: 0, gagal: 0, persenSukses: 0, persenBatal: 0, persenGagal: 0, pendapatan: 0, bersih: 0, potongan: 0, denda: 0, talangan: 0, history: [], potonganPersen: 0 }; }
+        } catch { return { total: 0, sukses: 0, belanjaSks: 0, ojekSks: 0, kirimSks: 0, batal: 0, gagal: 0, persenSukses: 0, persenBatal: 0, persenGagal: 0, pendapatan: 0, bersih: 0, potongan: 0, denda: 0, talangan: 0, history: [], potonganPersen: 0 }; }
     }, [courierAnalyticsOrders, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, courierFilterService, courierChartPeriod, adminProfitShare, kasShare, user?.id]);
 
     const handleDispatch = async (orderId) => {
@@ -1483,7 +1392,7 @@ export default function App() {
             if (error) throw error;
             setDispatchInputs(prev => ({ ...prev, [`${orderId}_courier`]: "", [`${orderId}_fee`]: "" }));
             showNotif("Tugas & Ongkir terkirim ke kurir!", "success");
-        } catch (error) { showNotif(`Gagal lempar order`, "error"); }
+        } catch { showNotif(`Gagal lempar order`, "error"); }
     };
 
     const cancelPendingOrder = async (orderId) => {
@@ -1507,7 +1416,7 @@ export default function App() {
                 setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "cancelled", kendala_info: finalReason } : o));
                 const { error } = await supabase.from("orders").update({ status: "cancelled", kendala_info: finalReason }).eq("id", orderId);
                 if (error) throw error; showNotif("Order dibatalkan oleh Admin!", "success");
-            } catch (err) { showNotif(`Gagal batal order`, "error"); }
+            } catch { showNotif(`Gagal batal order`, "error"); }
         }
     };
 
@@ -1524,7 +1433,31 @@ export default function App() {
 
             const { error } = await supabase.from("orders").update({ raw_order_text: finalText, status: "processing", kendala_info: null }).eq("id", editingOrder.id);
             if (error) throw error; setIsEditModalOpen(false); showNotif("Pesanan di-update, orderan lanjut jalan!", "success");
-        } catch (err) { showNotif(`Gagal update pesanan`, "error"); }
+        } catch { showNotif(`Gagal update pesanan`, "error"); }
+    };
+
+    const submitEditTitipan = async () => {
+        try {
+            const cleanTitipan = titipanLines.filter(line => line.trim().length > 0);
+            let rawText = editingTitipanOrder.text || "";
+            
+            const titipanRegex = /\s*Titipan:\s*([\s\S]*)/i;
+            if (titipanRegex.test(rawText)) {
+                rawText = rawText.replace(titipanRegex, '').trim();
+            }
+            
+            let finalText = rawText;
+            if (cleanTitipan.length > 0) {
+                const titipanStr = cleanTitipan.map(t => t).join("\n");
+                finalText += `\n\nTitipan:\n${titipanStr}`;
+            }
+
+            const { error } = await supabase.from("orders").update({ raw_order_text: finalText }).eq("id", editingTitipanOrder.id);
+            if (error) throw error; 
+            
+            setIsTitipanModalOpen(false); 
+            showNotif("Titipan berhasil di-update!", "success");
+        } catch { showNotif(`Gagal update titipan`, "error"); }
     };
 
     const submitCancelOrder = async () => {
@@ -1548,7 +1481,7 @@ export default function App() {
                 setAllOrders(prev => prev.map(o => o.id === editingOrder.id ? { ...o, status: "cancelled", kendala_info: finalReason } : o));
                 const { error } = await supabase.from("orders").update({ status: "cancelled", kendala_info: finalReason }).eq("id", editingOrder.id);
                 if (error) throw error; setIsEditModalOpen(false); showNotif("Pesanan berhasil DIBATALKAN!", "success");
-            } catch (err) { showNotif(`Gagal membatalkan`, "error"); }
+            } catch { showNotif(`Gagal membatalkan`, "error"); }
         }
     };
 
@@ -1588,17 +1521,9 @@ export default function App() {
         }
     };
 
-    const handleCustomerSelect = (selectedName) => {
-        const cust = customersList.find(c => c.name.toLowerCase() === selectedName.toLowerCase() || c.phone === selectedName);
-        if (cust) {
-            setManualForm({ ...manualForm, name: cust.name, wa: cust.phone, address: cust.address || '' });
-        } else {
-            setManualForm({ ...manualForm, name: selectedName });
-        }
-    };
-
-    const submitManualOrder = async () => {
-        if (!manualForm.name || !manualForm.wa || !manualForm.text) return showNotif("Nama, WA dan Pesanan wajib diisi!", "error");
+    const submitManualOrder = async (payloadText) => {
+        const finalOrderText = typeof payloadText === 'string' ? payloadText : manualForm.text;
+        if (!manualForm.name || !manualForm.wa || !finalOrderText) return showNotif("Nama, WA dan Pesanan wajib diisi!", "error");
         setIsUploadingManual(true);
         try {
             let uploadedImageUrls = [];
@@ -1608,7 +1533,7 @@ export default function App() {
                 for (let i = 0; i < manualImages.length; i++) {
                     const file = manualImages[i];
                     const fileExt = file.name.split('.').pop();
-                    const fileName = `manual_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+                    const fileName = `manual_${crypto.randomUUID()}.${fileExt}`;
                     const { error: uploadError } = await supabase.storage.from('order-images').upload(fileName, file);
                     if (uploadError) throw uploadError;
                     const { data: publicUrlData } = supabase.storage.from('order-images').getPublicUrl(fileName);
@@ -1623,7 +1548,7 @@ export default function App() {
 
             const isDirectDispatch = manualForm.courier && manualForm.fee;
             const { error } = await supabase.from("orders").insert([{
-                customer_name: manualForm.name, customer_wa: manualForm.wa, customer_address: manualForm.address, raw_order_text: manualForm.text, tipe_layanan: manualForm.type, status: isDirectDispatch ? 'processing' : 'pending', total_price: 0, delivery_fee: isDirectDispatch ? parseFloat(manualForm.fee || 0) : 0,
+                customer_name: manualForm.name, customer_wa: manualForm.wa, customer_address: manualForm.address, raw_order_text: finalOrderText, tipe_layanan: manualForm.type, status: isDirectDispatch ? 'processing' : 'pending', total_price: 0, delivery_fee: isDirectDispatch ? parseFloat(manualForm.fee || 0) : 0,
                 image_url: uploadedImageUrls.length > 0 ? uploadedImageUrls.join(',') : null,
                 assigned_courier_id: isDirectDispatch ? manualForm.courier : null, dispatched_at: isDirectDispatch ? new Date().toISOString() : null,
                 inputted_by: user ? user.name : null
@@ -1631,8 +1556,8 @@ export default function App() {
             if (error) throw error;
 
             setIsManualModalOpen(false); setManualForm({ name: '', wa: '', address: '', text: '', type: 'Belanja', fee: '', courier: '' }); setManualImages([]);
-            showNotif(isDirectDispatch ? "Order Dibuat & Langsung Jalan!" : "Order manual berhasil ditambahkan!", "success"); fetchData();
-        } catch (err) { showNotif(`Gagal bikin order`, "error"); } finally { setIsUploadingManual(false); }
+            showNotif(isDirectDispatch ? "Order Dibuat & Langsung Jalan!" : "Order manual berhasil ditambahkan!", "success");
+        } catch { showNotif(`Gagal bikin order`, "error"); } finally { setIsUploadingManual(false); }
     };
 
     const copyFormat = (type) => {
@@ -1666,7 +1591,7 @@ export default function App() {
             setAllOrders(prev => prev.map(o => o.id === kendalaForm.id ? { ...o, status: 'hold', kendala_info: kendalaNote } : o));
             const { error } = await supabase.from("orders").update({ status: 'hold', kendala_info: kendalaNote }).eq("id", kendalaForm.id);
             if (error) throw error; setIsKendalaModalOpen(false); showNotif("Kendala dilaporkan ke Admin!", "success");
-        } catch (err) { showNotif(`Gagal lapor kendala`, "error"); }
+        } catch { showNotif(`Gagal lapor kendala`, "error"); }
     };
 
     const submitTidakBisaLanjut = async (orderId) => {
@@ -1677,7 +1602,7 @@ export default function App() {
             setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "waiting_customer", failed_couriers: newFailed } : o));
             const { error } = await supabase.from("orders").update({ status: "waiting_customer", failed_couriers: newFailed }).eq("id", orderId);
             if (error) throw error; showNotif("Order dilepas.", "success");
-        } catch (err) { showNotif(`Gagal update`, "error"); }
+        } catch { showNotif(`Gagal update`, "error"); }
     };
 
     const handleLanjutProsesKendala = async (orderId) => {
@@ -1685,7 +1610,7 @@ export default function App() {
             setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "processing" } : o));
             const { error } = await supabase.from("orders").update({ status: "processing" }).eq("id", orderId);
             if (error) throw error; showNotif("Order dilanjutkan kembali!", "success");
-        } catch (err) { showNotif(`Gagal update`, "error"); }
+        } catch { showNotif(`Gagal update`, "error"); }
     };
 
     // GENERATOR STRUK: logika canvas dipindahkan ke src/utils/receiptGenerator.js
@@ -1722,7 +1647,7 @@ export default function App() {
             try {
                 await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
                 showNotif("Struk Gambar Otomatis Di-copy! Silakan Paste (Ctrl+V) di WA.", "success");
-            } catch (e) {
+            } catch {
                 const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Struk_${order.id}.png`; a.click();
                 showNotif("Struk di-download! Silakan kirimkan ke WA Customer.", "success");
             }
@@ -1742,7 +1667,7 @@ export default function App() {
             const serviceName = order.tipe_layanan === 'Belanja' ? 'Belanja/Jastip' : (order.tipe_layanan === 'Antar Jemput' ? 'Antar Jemput/Ojek' : 'Kirim Barang');
             const waText = encodeURIComponent(`Berikut adalah struk tagihan untuk Layanan ${serviceName} anda.\n\nPembayaran via transfer:${textBank}\n\nTerima kasih telah menggunakan layanan TutahTitah.`);
             window.open(`https://wa.me/${phone}?text=${waText}`, '_blank');
-        } catch (err) { showNotif("Gagal membuat struk gambar.", "error"); }
+        } catch { showNotif("Gagal membuat struk gambar.", "error"); }
     };
 
     const handleKirimTagihanKeAdmin = async (order) => {
@@ -1755,7 +1680,7 @@ export default function App() {
         if (order.tipe_layanan === 'Belanja') {
             const rawItemsObj = parseJastipItemsObjects(order.raw_order_text);
 
-            // 🔥 VALIDASI HARGA HARUS TERISI & LEBIH DARI 0
+            // ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â¥ VALIDASI HARGA HARUS TERISI & LEBIH DARI 0
             for (let idx = 0; idx < rawItemsObj.length; idx++) {
                 const userPrice = jastipPrices[`${order.id}_${idx}`];
                 const hasUserPrice = userPrice !== undefined && userPrice !== "";
@@ -1764,7 +1689,7 @@ export default function App() {
                 if (Number.isNaN(finalPrice) || finalPrice < 0 || (!hasUserPrice && finalPrice === 0)) {
                     Swal.fire({
                         icon: 'error',
-                        title: 'Harga Belum Lengkap! ⚠️',
+                        title: 'Harga Belum Lengkap! ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â',
                         text: 'Terdapat produk yang harganya belum diisi. Jika memang gratis, ketik angka 0!',
                         confirmButtonColor: '#004aad'
                     });
@@ -1781,9 +1706,53 @@ export default function App() {
         } else if (order.tipe_layanan === 'Antar Jemput') {
             const ojekData = parseOjekDetails(order.raw_order_text);
             if (ojekData) detailText += `Titik Jemput: ${ojekData.jemput}\nTujuan: ${ojekData.tujuan}\n`;
+            
+            const titipanObj = parseTitipanObjects(order.raw_order_text);
+            if (titipanObj.length > 0) {
+                detailText += `\nTitipan Belanja:\n`;
+                for (let idx = 0; idx < titipanObj.length; idx++) {
+                    const userPrice = jastipPrices[`${order.id}_titipan_${idx}`];
+                    const hasUserPrice = userPrice !== undefined && userPrice !== "";
+                    const finalPrice = hasUserPrice ? parseFloat(userPrice) : titipanObj[idx].defaultPrice;
+
+                    if (Number.isNaN(finalPrice) || finalPrice < 0 || (!hasUserPrice && finalPrice === 0)) {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Harga Titipan Belum Lengkap! ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â',
+                            text: 'Terdapat barang titipan yang harganya belum diisi. Jika memang gratis, ketik angka 0!',
+                            confirmButtonColor: '#004aad'
+                        });
+                        return;
+                    }
+                    finalTotalPrice += finalPrice;
+                    detailText += `- ${titipanObj[idx].name}: Rp ${(finalPrice || 0).toLocaleString('id-ID')}\n`;
+                }
+            }
         } else if (order.tipe_layanan === 'Kirim Barang') {
             const kirimData = parseKirimDetails(order.raw_order_text);
             if (kirimData) detailText += `Barang: ${kirimData.barang}\nAmbil: ${kirimData.ambil}\nTujuan: ${kirimData.tujuan}\nPenerima: ${kirimData.penerima}\nNote: ${kirimData.note}\n`;
+            
+            const titipanObj = parseTitipanObjects(order.raw_order_text);
+            if (titipanObj.length > 0) {
+                detailText += `\nTitipan Belanja:\n`;
+                for (let idx = 0; idx < titipanObj.length; idx++) {
+                    const userPrice = jastipPrices[`${order.id}_titipan_${idx}`];
+                    const hasUserPrice = userPrice !== undefined && userPrice !== "";
+                    const finalPrice = hasUserPrice ? parseFloat(userPrice) : titipanObj[idx].defaultPrice;
+
+                    if (Number.isNaN(finalPrice) || finalPrice < 0 || (!hasUserPrice && finalPrice === 0)) {
+                        Swal.fire({
+                            icon: 'error',
+                            title: 'Harga Titipan Belum Lengkap! ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â',
+                            text: 'Terdapat barang titipan yang harganya belum diisi. Jika memang gratis, ketik angka 0!',
+                            confirmButtonColor: '#004aad'
+                        });
+                        return;
+                    }
+                    finalTotalPrice += finalPrice;
+                    detailText += `- ${titipanObj[idx].name}: Rp ${(finalPrice || 0).toLocaleString('id-ID')}\n`;
+                }
+            }
         }
 
         try {
@@ -1798,7 +1767,7 @@ export default function App() {
 
             if (error) throw error;
             showNotif("Rincian tagihan berhasil diteruskan ke Admin!", "success");
-        } catch (err) { showNotif(`Gagal kirim tagihan`, "error"); }
+        } catch { showNotif(`Gagal kirim tagihan`, "error"); }
     };
 
     const handleCompleteOrder = async (order) => {
@@ -1810,13 +1779,21 @@ export default function App() {
         let finalTotalPrice = order.total_price;
         let finalFee = dispatchInputs[`${order.id}_updateFee`] !== undefined ? dispatchInputs[`${order.id}_updateFee`] : order.delivery_fee;
         if (order.tipe_layanan === 'Belanja' && order.status !== 'delivering') finalTotalPrice = calculateJastipTotal(order.id, order.raw_order_text);
+        if ((order.tipe_layanan === 'Antar Jemput' || order.tipe_layanan === 'Kirim Barang') && order.status !== 'delivering') {
+            const titipanObj = parseTitipanObjects(order.raw_order_text);
+            finalTotalPrice = titipanObj.reduce((sum, itemObj, idx) => {
+                const userPrice = jastipPrices[`${order.id}_titipan_${idx}`];
+                const finalPrice = (userPrice !== undefined && userPrice !== "") ? parseFloat(userPrice) : itemObj.defaultPrice;
+                return sum + (finalPrice || 0);
+            }, 0);
+        }
         if (!finalFee) return showNotif("Kurir WAJIB memastikan nominal ongkos jasa!", "error");
 
         try {
             setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: "completed", total_price: parseFloat(finalTotalPrice || 0), delivery_fee: parseFloat(finalFee || 0), completed_at: new Date().toISOString() } : o));
             const { error } = await supabase.from("orders").update({ status: "completed", total_price: parseFloat(finalTotalPrice || 0), delivery_fee: parseFloat(finalFee || 0), completed_at: new Date().toISOString() }).eq("id", order.id);
             if (error) throw error; showNotif(`Sukses! Data keuangan tersimpan.`, "success");
-        } catch (error) { showNotif(`Gagal menyelesaikan order`, "error"); }
+        } catch { showNotif(`Gagal menyelesaikan order`, "error"); }
     };
 
 
@@ -1833,6 +1810,19 @@ export default function App() {
     // [ServiceBadge, SimpleTooltip, CustomCourierSelect dipindahkan ke src/components/]
 
     const chatData = useLiveChat(user);
+    const { fetchCCTVChats } = chatData;
+    const [isMonitoringChatOpen, setIsMonitoringChatOpen] = useState(false);
+    const handleRefreshCCTVChats = useCallback((options) => fetchCCTVChats(options), [fetchCCTVChats]);
+    const handleLoadMoreCCTVChats = useCallback(() => fetchCCTVChats({ append: true }), [fetchCCTVChats]);
+
+    // Update document title when there are unread chats
+    useEffect(() => {
+        if (chatData?.unreadCount > 0) {
+            document.title = `(${chatData.unreadCount}) Pesan Baru - Aplikasi Tutah Titah`;
+        } else {
+            document.title = "Aplikasi Tutah Titah";
+        }
+    }, [chatData?.unreadCount]);
 
     if (!user) {
         return (
@@ -1864,7 +1854,7 @@ export default function App() {
         return (
             <div className="min-h-screen bg-red-50 flex flex-col items-center justify-center p-6 text-center">
                 <div className="w-24 h-24 mb-6 text-red-500 bg-red-100 rounded-full flex items-center justify-center text-4xl shadow-md border-4 border-white">
-                    ⛔
+                    ÃƒÂ¢Ã¢â‚¬ÂºÃ¢â‚¬Â
                 </div>
                 <h1 className="text-3xl font-black text-red-700 mb-3 tracking-tight">AKUN DIBEKUKAN</h1>
                 <p className="text-red-900/80 mb-8 max-w-sm mx-auto font-medium leading-relaxed">
@@ -1968,7 +1958,7 @@ export default function App() {
 
 
                             {/* TAB HRD / MANAJEMEN TIM KHUSUS ADMIN */}
-                            {/* ✅ [LEVEL 2 #10] Di-extract ke src/pages/admin/AdminTimTab.jsx */}
+                            {/* ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ [LEVEL 2 #10] Di-extract ke src/pages/admin/AdminTimTab.jsx */}
                             {adminMainTab === 'tim' && (
                                 <AdminTimTab
                                     allEmployees={allEmployees}
@@ -2039,7 +2029,7 @@ export default function App() {
                                     }}
                                     onEditOngkir={handleEditOngkirAdmin}
                                     onSendBillToCustomer={handleKirimTagihanKeCustomer}
-                                    onEditOrder={(order) => { setEditingOrder({ id: order.id, text: order.raw_order_text, status: order.status, kendala_info: order.kendala_info }); setIsEditModalOpen(true); }}
+                                    onEditOrder={openEditOrderModal}
                                     onOpenManualOrder={() => setIsManualModalOpen(true)}
                                 />
                             )}
@@ -2100,19 +2090,23 @@ export default function App() {
                                     {chatData.activeChatId ? (
                                         <InternalChatRoom
                                             currentUser={user}
+                                            chatId={chatData.activeChatId}
                                             participantName={chatData.chats.find(c => c.id === chatData.activeChatId)?.displayName}
                                             participantAvatar={chatData.chats.find(c => c.id === chatData.activeChatId)?.displayAvatar}
                                             participantSubtitle={chatData.chats.find(c => c.id === chatData.activeChatId)?.displaySubtitle}
                                             messages={chatData.messages}
                                             loading={chatData.loadingMessages}
+                                            hasMoreMessages={chatData.hasMoreMessages}
                                             relevantOrders={chatData.relevantOrders}
                                             loadingOrders={chatData.loadingOrders}
                                             isChatClosed={false}
+                                            isDisabledByAdmin={chatData.chats.find(c => c.id === chatData.activeChatId)?.isDisabledByAdmin}
                                             isUploading={false}
                                             onBack={() => chatData.setActiveChatId(null)}
                                             onSendMessage={chatData.handleSendMessage}
                                             onDeleteMessage={chatData.handleDeleteMessage}
                                             onUploadImage={chatData.handleUploadImage}
+                                            onLoadMoreMessages={chatData.loadMoreMessages}
                                             onOpenOrderPicker={() => { }}
                                             onCloseOrderPicker={() => { }}
                                         />
@@ -2129,6 +2123,7 @@ export default function App() {
                                             onDeleteChat={chatData.handleDeleteChat}
                                             onDeleteAllChats={chatData.handleDeleteAllChats}
                                             onMarkAsRead={chatData.handleMarkAsRead}
+                                            onOpenMonitoring={() => setIsMonitoringChatOpen(true)}
                                         />
                                     )}
                                 </div>
@@ -2144,7 +2139,7 @@ export default function App() {
                 {user.role === "courier" && (
                     <div className="w-full max-w-screen-xl mx-auto pb-24 md:pb-0">
 
-                        {/* ── TOP HEADER BAR (tablet & desktop only) ── */}
+                        {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ TOP HEADER BAR (tablet & desktop only) ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
                         <div className="no-print hidden md:flex items-center justify-between bg-[#004aad] px-6 py-3 shadow-lg">
                             <div className="flex items-center gap-3">
                                 <div className="w-9 h-9 rounded-full bg-white flex items-center justify-center shadow border-2 border-[#ffde59] p-1">
@@ -2156,11 +2151,11 @@ export default function App() {
                                 </div>
                             </div>
                             <button onClick={handleLogout} className="text-[10px] font-bold text-white/70 hover:text-white bg-white/10 hover:bg-white/20 border border-white/20 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5">
-                                🚪 Keluar
+                                ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Âª Keluar
                             </button>
                         </div>
 
-                        {/* ── LAYOUT CONTAINER: sidebar (lg) + content ── */}
+                        {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ LAYOUT CONTAINER: sidebar (lg) + content ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
                         <div className="md:flex md:flex-row md:min-h-screen">
 
                             <CourierNav
@@ -2171,7 +2166,7 @@ export default function App() {
                                 unreadChatCount={chatData.unreadCount}
                             />
 
-                            {/* ── MAIN CONTENT AREA ── */}
+                            {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ MAIN CONTENT AREA ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
                             <div className="flex-1 min-w-0 relative">
 
                                 {/* TAB TUGAS */}
@@ -2190,7 +2185,8 @@ export default function App() {
                                         dispatchInputs={dispatchInputs}
                                         setDispatchInputs={setDispatchInputs}
                                         onSetLightboxImg={setLightboxImg}
-                                        onOpenEditOrder={(order) => { setEditingOrder({ id: order.id, text: order.raw_order_text, status: order.status, kendala_info: order.kendala_info }); setIsEditModalOpen(true); }}
+                                        onOpenEditOrder={openEditOrderModal}
+                                        onOpenEditTitipan={openEditTitipanModal}
                                         onOpenKendala={(order) => { const items = order.tipe_layanan === 'Belanja' ? parseJastipItemsObjects(order.raw_order_text).map(item => ({ text: item.name, isKendala: false, note: '' })) : []; setKendalaForm({ id: order.id, type: order.tipe_layanan, text: '', jastipItems: items }); setIsKendalaModalOpen(true); }}
                                         onSendBillToAdmin={handleKirimTagihanKeAdmin}
                                         onCompleteOrder={handleCompleteOrder}
@@ -2261,19 +2257,23 @@ export default function App() {
                                         {chatData.activeChatId ? (
                                             <InternalChatRoom
                                                 currentUser={user}
+                                                chatId={chatData.activeChatId}
                                                 participantName={chatData.chats.find(c => c.id === chatData.activeChatId)?.displayName}
                                                 participantAvatar={chatData.chats.find(c => c.id === chatData.activeChatId)?.displayAvatar}
                                                 participantSubtitle={chatData.chats.find(c => c.id === chatData.activeChatId)?.displaySubtitle}
                                                 messages={chatData.messages}
                                                 loading={chatData.loadingMessages}
+                                                hasMoreMessages={chatData.hasMoreMessages}
                                                 relevantOrders={chatData.relevantOrders}
                                                 loadingOrders={chatData.loadingOrders}
                                                 isChatClosed={false}
+                                            isDisabledByAdmin={chatData.chats.find(c => c.id === chatData.activeChatId)?.isDisabledByAdmin}
                                                 isUploading={false}
                                                 onBack={() => chatData.setActiveChatId(null)}
                                                 onSendMessage={chatData.handleSendMessage}
                                                 onDeleteMessage={chatData.handleDeleteMessage}
                                                 onUploadImage={chatData.handleUploadImage}
+                                                onLoadMoreMessages={chatData.loadMoreMessages}
                                                 onOpenOrderPicker={() => { }}
                                                 onCloseOrderPicker={() => { }}
                                             />
@@ -2290,6 +2290,7 @@ export default function App() {
                                                 onDeleteChat={chatData.handleDeleteChat}
                                                 onDeleteAllChats={chatData.handleDeleteAllChats}
                                                 onMarkAsRead={chatData.handleMarkAsRead}
+                                                onOpenMonitoring={() => setIsMonitoringChatOpen(true)}
                                             />
                                         )}
                                     </div>
@@ -2305,7 +2306,24 @@ export default function App() {
 
             </div>
 
-            {/* MODAL EDIT PESANAN */}
+            {user?.role === 'admin' && (
+                <MonitoringChatModal
+                    isOpen={isMonitoringChatOpen}
+                    chats={chatData.cctvChats}
+                    loading={chatData.loadingCctvChats}
+                    hasMore={chatData.hasMoreCctvChats}
+                    disablingChatId={chatData.disablingChatId}
+                    onClose={() => setIsMonitoringChatOpen(false)}
+                    onRefresh={handleRefreshCCTVChats}
+                    onLoadMore={handleLoadMoreCCTVChats}
+                    onOpenChat={(chatId) => {
+                        setIsMonitoringChatOpen(false);
+                        setAdminMainTab('chat');
+                        chatData.setActiveChatId(chatId);
+                    }}
+                    onDisableChat={(chat) => chatData.handleDisableChat(chat.id)}
+                />
+            )}
 
             {/* MODAL LAMPIRAN LAPORAN */}
             <ReportAttachmentModal
@@ -2334,6 +2352,17 @@ export default function App() {
                 onNoteChange={setEditNote}
                 onSubmitEdit={submitEditOrder}
                 onSubmitCancel={submitCancelOrder}
+            />
+
+            {/* MODAL EDIT TITIPAN */}
+            <EditTitipanModal
+                isOpen={isTitipanModalOpen}
+                onClose={() => setIsTitipanModalOpen(false)}
+                titipanLines={titipanLines}
+                onLineChange={handleTitipanLineChange}
+                onAddLine={handleAddTitipanLine}
+                onRemoveLine={handleRemoveTitipanLine}
+                onSubmitEdit={submitEditTitipan}
             />
 
             {/* MODAL TAMBAH PEGAWAI (HRD) */}

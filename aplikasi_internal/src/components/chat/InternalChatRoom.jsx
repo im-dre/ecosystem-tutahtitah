@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Receipt, X, Lock, ChevronRight, Copy, Trash2 } from 'lucide-react';
+import { ArrowLeft, Send, Paperclip, Image as ImageIcon, Receipt, X, Lock, Copy, Trash2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import dayjs from 'dayjs';
 import 'dayjs/locale/id';
@@ -16,12 +16,12 @@ const formatDateGroup = (dateString) => {
 };
 
 // Render message bubble content
-function MessageBubble({ msg, isMine, currentUser, onLongPress }) {
+function MessageBubble({ msg, isMine, onLongPress }) {
   let content = null;
   if (msg.metadata) {
     let meta;
     try { meta = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata; } catch { meta = null; }
-    if (meta?.type === 'image') {
+    if (meta?.type === 'image' && meta.url) {
       content = (
         <div className="flex flex-col gap-1">
           <img
@@ -33,7 +33,7 @@ function MessageBubble({ msg, isMine, currentUser, onLongPress }) {
           {msg.content && <p className="text-sm mt-1">{msg.content}</p>}
         </div>
       );
-    } else if (meta?.type === 'order') {
+    } else if ((meta?.type === 'invoice' || meta?.type === 'order') && meta.id) {
       const statusColors = {
         completed: 'bg-green-50 border-green-200',
         cancelled: 'bg-red-50 border-red-200',
@@ -46,6 +46,7 @@ function MessageBubble({ msg, isMine, currentUser, onLongPress }) {
             <Receipt size={14} className="text-[#004aad]" />
             <span className="text-xs font-bold text-[#004aad]">Invoice Order</span>
           </div>
+          <p className="text-[10px] text-gray-400 mb-1">No. Order #{String(meta.id).substring(0, 8)}</p>
           <p className="font-bold text-gray-900 text-sm truncate">{meta.merchant_name || 'Order'}</p>
           <p className="text-xs text-gray-500 capitalize">{meta.tipe_layanan}</p>
           {meta.total_price > 0 && (
@@ -91,12 +92,15 @@ function MessageBubble({ msg, isMine, currentUser, onLongPress }) {
 
 export default function InternalChatRoom({ 
   currentUser,
+  chatId,
   participantName,
   participantAvatar,
   participantSubtitle,
   messages = [],
   loading = false,
+  hasMoreMessages = false,
   isChatClosed = false,
+  isDisabledByAdmin = false,
   isUploading = false,
   showOrderModal = false,
   relevantOrders = [],
@@ -105,6 +109,7 @@ export default function InternalChatRoom({
   onSendMessage,
   onDeleteMessage,
   onUploadImage,
+  onLoadMoreMessages,
   onOpenOrderPicker,
   onCloseOrderPicker
 }) {
@@ -112,20 +117,42 @@ export default function InternalChatRoom({
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [stagedAttachment, setStagedAttachment] = useState(null);
   const [selectedMessage, setSelectedMessage] = useState(null);
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
 
   const fileInputRef = useRef(null);
+  const messagesContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const longPressTimer = useRef(null);
+  const loadMoreScrollPositionRef = useRef(null);
 
   const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
 
   useEffect(() => {
+    const previousScrollPosition = loadMoreScrollPositionRef.current;
+    if (previousScrollPosition && messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = previousScrollPosition.scrollTop
+        + (messagesContainerRef.current.scrollHeight - previousScrollPosition.scrollHeight);
+      loadMoreScrollPositionRef.current = null;
+      return;
+    }
     scrollToBottom();
   }, [messages]);
 
+  const handleLoadMoreMessages = () => {
+    if (!onLoadMoreMessages || loading) return;
+    const container = messagesContainerRef.current;
+    if (container) {
+      loadMoreScrollPositionRef.current = {
+        scrollHeight: container.scrollHeight,
+        scrollTop: container.scrollTop,
+      };
+    }
+    onLoadMoreMessages();
+  };
+
   const handleSendMessage = (e) => {
     if (e) e.preventDefault();
-    if (isChatClosed) return;
+    if (isChatClosed || isDisabledByAdmin) return;
     if (!newMessage.trim() && !stagedAttachment) return;
 
     if (onSendMessage) {
@@ -137,12 +164,13 @@ export default function InternalChatRoom({
   };
 
   const handleImageUpload = async (e) => {
+    if (isDisabledByAdmin) return;
     const file = e.target.files?.[0];
     if (!file) return;
     setShowAttachMenu(false);
     
     if (onUploadImage) {
-      const attachment = await onUploadImage(file);
+      const attachment = await onUploadImage(file, chatId);
       if (attachment) {
         setStagedAttachment(attachment);
       }
@@ -177,18 +205,20 @@ export default function InternalChatRoom({
 
   const handleOpenOrderPicker = () => {
     setShowAttachMenu(false);
+    setIsOrderModalOpen(true);
     if (onOpenOrderPicker) onOpenOrderPicker();
   };
 
   const handleSelectOrder = (order) => {
     setStagedAttachment({
-      type: 'order',
+      type: 'invoice',
       id: order.id,
       status: order.status,
       total_price: order.total_price || 0,
       tipe_layanan: order.tipe_layanan,
       merchant_name: order.merchants?.name || order.customer_name || '-',
     });
+    setIsOrderModalOpen(false);
     if (onCloseOrderPicker) onCloseOrderPicker();
   };
 
@@ -201,6 +231,7 @@ export default function InternalChatRoom({
   }, {});
 
   const getInitials = (name) => (name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  const isComposerDisabled = isChatClosed || isDisabledByAdmin;
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col bg-[#f0f2f5] overflow-hidden">
@@ -238,10 +269,16 @@ export default function InternalChatRoom({
           <p className="text-xs font-medium text-amber-700">Chat ini ditutup karena orderan sudah selesai atau dibatalkan</p>
         </div>
       )}
+      {isDisabledByAdmin && (
+        <div className="bg-red-50 border-b border-red-200 px-4 py-2 flex items-center gap-2 flex-shrink-0 z-10 relative">
+          <Lock size={14} className="text-red-600 flex-shrink-0" />
+          <p className="text-xs font-medium text-red-700">Chat dinonaktifkan sistem terkait indikasi pelanggaran</p>
+        </div>
+      )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4 z-10 relative">
-        {loading ? (
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-3 py-4 space-y-4 z-10 relative">
+        {loading && messages.length === 0 ? (
           <div className="flex items-center justify-center h-40">
             <div className="w-6 h-6 border-2 border-[#004aad] border-t-transparent rounded-full animate-spin" />
           </div>
@@ -250,7 +287,20 @@ export default function InternalChatRoom({
             <p className="text-sm text-gray-400 font-medium">Mulai percakapan dengan {participantName}</p>
           </div>
         ) : (
-          Object.entries(groupedMessages).map(([dateKey, msgs]) => (
+          <>
+          {hasMoreMessages && (
+            <div className="flex justify-center pb-1">
+              <button
+                type="button"
+                onClick={handleLoadMoreMessages}
+                disabled={loading}
+                className="rounded-full border border-blue-100 bg-white px-3 py-1.5 text-xs font-semibold text-[#004aad] shadow-sm active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loading ? 'Memuat pesan...' : 'Muat pesan sebelumnya'}
+              </button>
+            </div>
+          )}
+          {Object.entries(groupedMessages).map(([dateKey, msgs]) => (
             <div key={dateKey}>
               <div className="flex justify-center mb-3">
                 <span className="bg-white/80 text-gray-500 text-[10px] font-bold px-3 py-1 rounded-full shadow-sm border border-gray-100">
@@ -258,13 +308,15 @@ export default function InternalChatRoom({
                 </span>
               </div>
               {msgs.map(msg => {
+                if (msg.sender_type === 'system') {
+                  return <div key={msg.id} className="flex justify-center my-3"><span className="max-w-[85%] rounded-full bg-amber-100 border border-amber-200 px-3 py-1.5 text-center text-[11px] font-semibold text-amber-800">{msg.content}</span></div>;
+                }
                 const isMine = msg.sender_id === currentUser?.id || (currentUser?.role === 'admin' && msg.sender_id === '00000000-0000-0000-0000-000000000000');
                 return (
                   <MessageBubble
                     key={msg.id}
                     msg={msg}
                     isMine={isMine}
-                    currentUser={currentUser}
                     onLongPress={(m) => {
                       if (m === null) { handleTouchEnd(); return; }
                       handleTouchStart(m);
@@ -273,7 +325,8 @@ export default function InternalChatRoom({
                 );
               })}
             </div>
-          ))
+          ))}
+          </>
         )}
         <div ref={messagesEndRef} />
       </div>
@@ -313,8 +366,9 @@ export default function InternalChatRoom({
             <div className="relative">
               <button
                 type="button"
+                disabled={isComposerDisabled}
                 onClick={() => setShowAttachMenu(prev => !prev)}
-                className="w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center hover:bg-gray-200 transition-colors flex-shrink-0"
+                className="w-10 h-10 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center hover:bg-gray-200 transition-colors flex-shrink-0 disabled:opacity-40"
               >
                 {isUploading ? (
                   <div className="w-4 h-4 border-2 border-[#004aad] border-t-transparent rounded-full animate-spin" />
@@ -328,15 +382,17 @@ export default function InternalChatRoom({
                 <div className="absolute bottom-12 left-0 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 flex flex-col gap-1 min-w-[150px] z-10">
                   <button
                     type="button"
+                    disabled={isComposerDisabled}
                     onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click(); }}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 transition-colors disabled:opacity-40"
                   >
                     <ImageIcon size={16} className="text-green-500" /> Foto
                   </button>
                   <button
                     type="button"
+                    disabled={isComposerDisabled}
                     onClick={handleOpenOrderPicker}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 transition-colors"
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 transition-colors disabled:opacity-40"
                   >
                     <Receipt size={16} className="text-[#004aad]" /> Invoice Order
                   </button>
@@ -351,7 +407,8 @@ export default function InternalChatRoom({
               value={newMessage}
               onChange={e => setNewMessage(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(null); } }}
-              placeholder="Ketik pesan..."
+              placeholder={isDisabledByAdmin ? 'Chat dinonaktifkan sistem' : 'Ketik pesan...'}
+              disabled={isComposerDisabled}
               rows={1}
               className="flex-1 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 text-sm resize-none focus:outline-none focus:border-[#004aad] transition-colors max-h-28 overflow-y-auto"
               style={{ minHeight: '42px' }}
@@ -360,7 +417,7 @@ export default function InternalChatRoom({
             {/* Send Button */}
             <button
               type="submit"
-              disabled={!newMessage.trim() && !stagedAttachment}
+              disabled={isComposerDisabled || (!newMessage.trim() && !stagedAttachment)}
               className="w-10 h-10 rounded-full bg-[#004aad] text-white flex items-center justify-center hover:bg-blue-700 active:scale-90 transition-all flex-shrink-0 disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
             >
               <Send size={16} />
@@ -376,12 +433,12 @@ export default function InternalChatRoom({
       )}
 
       {/* Order Picker Modal */}
-      {showOrderModal && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex flex-col justify-end" onClick={onCloseOrderPicker}>
+      {(showOrderModal || isOrderModalOpen) && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex flex-col justify-end" onClick={() => { setIsOrderModalOpen(false); onCloseOrderPicker?.(); }}>
           <div className="bg-white rounded-t-3xl flex flex-col max-h-[75vh]" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h3 className="font-bold text-gray-900">Pilih Invoice / Order</h3>
-              <button onClick={onCloseOrderPicker} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500">
+              <button onClick={() => { setIsOrderModalOpen(false); onCloseOrderPicker?.(); }} className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500">
                 <X size={18} />
               </button>
             </div>

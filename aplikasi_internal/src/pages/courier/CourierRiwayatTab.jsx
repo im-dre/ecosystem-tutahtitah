@@ -1,10 +1,10 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import ServiceBadge from "../../components/ui/ServiceBadge";
-import { calculateDuration, formatDateTime, parseJastipItemsObjects, parseJastipNote, parseKirimDetails, parseOjekDetails } from "../../utils/helpers";
+import { calculateDuration, formatDateTime, parseKirimDetails, parseOjekDetails } from "../../utils/helpers";
 
 // [LEVEL 3 #14] Tab Riwayat Kurir di-extract dari App.jsx.
 // State filter, pagination, data riwayat, dan handler tetap di App.jsx.
-export default function CourierRiwayatTab({ courierFilterPeriod, setCourierFilterPeriod, courierFilterService, setCourierFilterService, courierFilterStartDate, setCourierFilterStartDate, courierFilterEndDate, setCourierFilterEndDate, courierHistoryOrders, user, courierHistoryLimit, setCourierHistoryLimit, isFetchingHistory, loading, orderRatings, setLightboxImg, onFetchAllHistoricalOrders }) {
+export default function CourierRiwayatTab({ courierFilterPeriod, setCourierFilterPeriod, courierFilterService, setCourierFilterService, courierFilterStartDate, setCourierFilterStartDate, courierFilterEndDate, setCourierFilterEndDate, courierHistoryOrders, user, courierHistoryLimit, setCourierHistoryLimit, isFetchingHistory, loading, orderRatings }) {
     const flattenedHistory = useMemo(() => {
         if (!courierHistoryOrders || !user) return [];
         const filtered = courierHistoryOrders.filter(o => {
