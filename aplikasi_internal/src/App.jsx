@@ -54,6 +54,21 @@ import AdminOperasionalTab from "./pages/admin/AdminOperasionalTab";
 
 const NOTIF_SOUND_URL = import.meta.env.VITE_NOTIF_SOUND_URL || "https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3";
 
+const useDebounce = (value, delay) => {
+    const [debouncedValue, setDebouncedValue] = useState(value);
+
+    useEffect(() => {
+        const timer = window.setTimeout(() => setDebouncedValue(value), delay);
+        return () => window.clearTimeout(timer);
+    }, [value, delay]);
+
+    return debouncedValue;
+};
+
+const normalizeHistorySearch = (value) => value.trim().replace(/\s+/g, ' ');
+
+const escapePostgrestIlikeValue = (value) => value.replace(/[\\%_(),]/g, '\\$&');
+
 export default function App() {
     const [user, setUser] = useState(null);
 
@@ -107,6 +122,25 @@ export default function App() {
     const [adminHistorySearch, setAdminHistorySearch] = useState('');
     const [adminHistoryLimit, setAdminHistoryLimit] = useState(10);
     const [courierHistoryLimit, setCourierHistoryLimit] = useState(10);
+    const normalizedAdminHistorySearch = normalizeHistorySearch(adminHistorySearch);
+    const debouncedAdminHistorySearch = useDebounce(normalizedAdminHistorySearch, 500);
+    const [courierHistorySearch, setCourierHistorySearch] = useState('');
+    const normalizedCourierHistorySearch = normalizeHistorySearch(courierHistorySearch);
+    const debouncedCourierHistorySearch = useDebounce(normalizedCourierHistorySearch, 500);
+    const resetAdminHistoryLimit = useCallback((setter) => (value) => {
+        setAdminHistoryLimit(10);
+        setter(value);
+    }, []);
+    const updateAdminHistorySearch = resetAdminHistoryLimit(setAdminHistorySearch);
+    const updateAdminFilterPeriod = resetAdminHistoryLimit(setAdminFilterPeriod);
+    const updateAdminFilterStartDate = resetAdminHistoryLimit(setAdminFilterStartDate);
+    const updateAdminFilterEndDate = resetAdminHistoryLimit(setAdminFilterEndDate);
+
+    const resetCourierHistoryLimit = useCallback((setter) => (value) => {
+        setCourierHistoryLimit(10);
+        setter(value);
+    }, []);
+    const updateCourierHistorySearch = resetCourierHistoryLimit(setCourierHistorySearch);
 
     const [adminAnalyticsOrders, setAdminAnalyticsOrders] = useState([]);
     const [courierAnalyticsOrders, setCourierAnalyticsOrders] = useState([]);
@@ -248,6 +282,9 @@ export default function App() {
     const [adminFilterService, setAdminFilterService] = useState('all');
     const [adminFilterStatus, setAdminFilterStatus] = useState('all');
     const [adminFilterCourier, setAdminFilterCourier] = useState('all');
+    const updateAdminFilterService = resetAdminHistoryLimit(setAdminFilterService);
+    const updateAdminFilterStatus = resetAdminHistoryLimit(setAdminFilterStatus);
+    const updateAdminFilterCourier = resetAdminHistoryLimit(setAdminFilterCourier);
 
     const [dispatchInputs, setDispatchInputs] = useState({});
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -338,6 +375,10 @@ export default function App() {
     const [courierFilterStartDate, setCourierFilterStartDate] = useState('');
     const [courierFilterEndDate, setCourierFilterEndDate] = useState('');
     const [courierFilterService, setCourierFilterService] = useState('all');
+    const updateCourierFilterPeriod = resetCourierHistoryLimit(setCourierFilterPeriod);
+    const updateCourierFilterStartDate = resetCourierHistoryLimit(setCourierFilterStartDate);
+    const updateCourierFilterEndDate = resetCourierHistoryLimit(setCourierFilterEndDate);
+    const updateCourierFilterService = resetCourierHistoryLimit(setCourierFilterService);
 
     // STATE MANAJEMEN TIM (HRD)
     const [allEmployees, setAllEmployees] = useState([]);
@@ -978,7 +1019,7 @@ export default function App() {
         }
     }, []);
 
-    const fetchHistoricalData = useCallback(async (role, period, customStart, customEnd) => {
+    const fetchHistoricalData = useCallback(async (role, period, customStart, customEnd, historyFilters = {}) => {
         if (period === 'custom' && (!customStart || !customEnd)) return;
         setIsFetchingHistory(true);
         try {
@@ -993,9 +1034,29 @@ export default function App() {
                 query = query.or(`assigned_courier_id.eq.${user.id},failed_couriers.cs.[{"id":"${user.id}"}]`);
             }
 
-            // Dynamic limit
-            const limit = role === 'admin' ? adminHistoryLimit : courierHistoryLimit;
-            query = query.limit(limit);
+            if (role === 'admin') {
+                const { search, service, status, courierId, limit } = historyFilters;
+
+                query = query.in('status', ['completed', 'cancelled']);
+                if (service && service !== 'all') query = query.eq('tipe_layanan', service);
+                if (courierId && courierId !== 'all') query = query.eq('assigned_courier_id', courierId);
+                if (status === 'completed') query = query.eq('status', 'completed');
+                if (status === 'cancelled') query = query.eq('status', 'cancelled').eq('failed_couriers', '[]');
+                if (status === 'failed') query = query.eq('status', 'cancelled').neq('failed_couriers', '[]');
+                if (search) {
+                    const escapedSearch = escapePostgrestIlikeValue(search);
+                    query = query.or(`customer_name.ilike.%${escapedSearch}%,customer_wa.ilike.%${escapedSearch}%`);
+                }
+                query = query.limit(limit);
+            } else {
+                const { search, service, limit } = historyFilters;
+                if (service && service !== 'all') query = query.eq('tipe_layanan', service);
+                if (search) {
+                    const escapedSearch = escapePostgrestIlikeValue(search);
+                    query = query.or(`customer_name.ilike.%${escapedSearch}%,customer_wa.ilike.%${escapedSearch}%`);
+                }
+                query = query.limit(limit);
+            }
 
             const { data, error } = await query;
             if (error) throw error;
@@ -1011,16 +1072,24 @@ export default function App() {
         } finally {
             setIsFetchingHistory(false);
         }
-    }, [adminHistoryLimit, courierHistoryLimit, user?.id]);
+    }, [user?.id]);
 
     // Admin Lazy Load - Riwayat
     useEffect(() => {
         if (!user || (user.role !== 'admin' && user.role !== 'superadmin')) return;
         if (adminMainTab === 'riwayat') {
-            const timer = window.setTimeout(() => { void fetchHistoricalData('admin', adminFilterPeriod, adminFilterStartDate, adminFilterEndDate); }, 0);
+            const timer = window.setTimeout(() => {
+                void fetchHistoricalData('admin', adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, {
+                    search: debouncedAdminHistorySearch,
+                    service: adminFilterService,
+                    status: adminFilterStatus,
+                    courierId: adminFilterCourier,
+                    limit: adminHistoryLimit
+                });
+            }, 0);
             return () => window.clearTimeout(timer);
         }
-    }, [adminMainTab, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, user, fetchHistoricalData]);
+    }, [adminMainTab, adminFilterPeriod, adminFilterStartDate, adminFilterEndDate, adminFilterService, adminFilterStatus, adminFilterCourier, debouncedAdminHistorySearch, adminHistoryLimit, user, fetchHistoricalData]);
 
     // Admin Lazy Load - Analitik
     useEffect(() => {
@@ -1035,10 +1104,16 @@ export default function App() {
     useEffect(() => {
         if (!user || user.role !== 'courier') return;
         if (courierMainTab === 'riwayat') {
-            const timer = window.setTimeout(() => { void fetchHistoricalData('courier', courierFilterPeriod, courierFilterStartDate, courierFilterEndDate); }, 0);
+            const timer = window.setTimeout(() => {
+                void fetchHistoricalData('courier', courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, {
+                    search: debouncedCourierHistorySearch,
+                    service: courierFilterService,
+                    limit: courierHistoryLimit
+                });
+            }, 0);
             return () => window.clearTimeout(timer);
         }
-    }, [courierMainTab, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, user, fetchHistoricalData]);
+    }, [courierMainTab, courierFilterPeriod, courierFilterStartDate, courierFilterEndDate, courierFilterService, debouncedCourierHistorySearch, courierHistoryLimit, user, fetchHistoricalData]);
     
     // Courier Lazy Load - Analitik
     useEffect(() => {
@@ -2038,19 +2113,19 @@ export default function App() {
                             {adminMainTab === 'riwayat' && (
                                 <AdminRiwayatTab
                                     adminFilterPeriod={adminFilterPeriod}
-                                    setAdminFilterPeriod={setAdminFilterPeriod}
+                                    setAdminFilterPeriod={updateAdminFilterPeriod}
                                     adminFilterStartDate={adminFilterStartDate}
-                                    setAdminFilterStartDate={setAdminFilterStartDate}
+                                    setAdminFilterStartDate={updateAdminFilterStartDate}
                                     adminFilterEndDate={adminFilterEndDate}
-                                    setAdminFilterEndDate={setAdminFilterEndDate}
+                                    setAdminFilterEndDate={updateAdminFilterEndDate}
                                     adminFilterService={adminFilterService}
-                                    setAdminFilterService={setAdminFilterService}
+                                    setAdminFilterService={updateAdminFilterService}
                                     adminFilterStatus={adminFilterStatus}
-                                    setAdminFilterStatus={setAdminFilterStatus}
+                                    setAdminFilterStatus={updateAdminFilterStatus}
                                     adminFilterCourier={adminFilterCourier}
-                                    setAdminFilterCourier={setAdminFilterCourier}
+                                    setAdminFilterCourier={updateAdminFilterCourier}
                                     adminHistorySearch={adminHistorySearch}
-                                    setAdminHistorySearch={setAdminHistorySearch}
+                                    setAdminHistorySearch={updateAdminHistorySearch}
                                     adminHistoryLimit={adminHistoryLimit}
                                     setAdminHistoryLimit={setAdminHistoryLimit}
                                     adminAnalytics={adminAnalytics}
@@ -2199,13 +2274,15 @@ export default function App() {
                                 {courierMainTab === 'riwayat' && (
                                     <CourierRiwayatTab
                                         courierFilterPeriod={courierFilterPeriod}
-                                        setCourierFilterPeriod={setCourierFilterPeriod}
+                                        setCourierFilterPeriod={updateCourierFilterPeriod}
                                         courierFilterService={courierFilterService}
-                                        setCourierFilterService={setCourierFilterService}
+                                        setCourierFilterService={updateCourierFilterService}
                                         courierFilterStartDate={courierFilterStartDate}
-                                        setCourierFilterStartDate={setCourierFilterStartDate}
+                                        setCourierFilterStartDate={updateCourierFilterStartDate}
                                         courierFilterEndDate={courierFilterEndDate}
-                                        setCourierFilterEndDate={setCourierFilterEndDate}
+                                        setCourierFilterEndDate={updateCourierFilterEndDate}
+                                        courierHistorySearch={courierHistorySearch}
+                                        setCourierHistorySearch={updateCourierHistorySearch}
                                         courierHistoryOrders={courierHistoryOrders}
                                         user={user}
                                         courierHistoryLimit={courierHistoryLimit}

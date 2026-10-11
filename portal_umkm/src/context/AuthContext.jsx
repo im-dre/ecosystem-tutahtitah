@@ -80,12 +80,18 @@ export function AuthProvider({ children }) {
     return await supabase.auth.signUp({ email, password });
   };
 
+  const submitMerchantForReview = async (merchantId) => {
+    return await supabase.rpc('submit_merchant_for_review', {
+      p_merchant_id: merchantId
+    });
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ user, merchant, loading, refreshMerchant, signOut, signIn, signUp }}>
+    <AuthContext.Provider value={{ user, merchant, loading, refreshMerchant, signOut, signIn, signUp, submitMerchantForReview }}>
       {children}
     </AuthContext.Provider>
   );

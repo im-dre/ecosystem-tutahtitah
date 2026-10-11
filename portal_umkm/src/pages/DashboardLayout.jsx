@@ -5,14 +5,14 @@ import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast';
 
 export default function DashboardLayout() {
-  const { user, merchant, signOut, refreshMerchant } = useAuth();
+  const { user, merchant, signOut, refreshMerchant, submitMerchantForReview } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [productCount, setProductCount] = useState(0);
   const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
-    if (merchant && (merchant.status === 'DRAFT' || merchant.status === 'REJECTED')) {
+    if (merchant && (merchant.status === 'draft' || merchant.status === 'rejected')) {
       const fetchCount = async () => {
         const { count } = await supabase
           .from('products')
@@ -31,10 +31,7 @@ export default function DashboardLayout() {
 
   const handleVerifyRequest = async () => {
     setVerifying(true);
-    const { error } = await supabase
-      .from('merchants')
-      .update({ status: 'PENDING' })
-      .eq('id', merchant.id);
+    const { error } = await submitMerchantForReview(merchant.id);
 
     if (error) {
       toast.error('Gagal mengajukan verifikasi');
@@ -45,8 +42,8 @@ export default function DashboardLayout() {
     setVerifying(false);
   };
 
-  const status = merchant?.status || 'DRAFT';
-  const isVerified = status === 'VERIFIED';
+  const status = merchant?.status || 'draft';
+  const isVerified = status === 'approved';
 
   const isProfileComplete = Boolean(merchant?.description && merchant?.logo_url);
   const canVerify = productCount >= 1 && isProfileComplete;

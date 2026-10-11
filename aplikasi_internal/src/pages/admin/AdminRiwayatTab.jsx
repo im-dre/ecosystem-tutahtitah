@@ -24,7 +24,7 @@ export default function AdminRiwayatTab({
                                     <div className="bg-white pt-4 pb-3 px-4 sm:px-6 md:px-3 md:rounded-2xl shadow-sm border-b md:border border-gray-200 flex flex-col sticky top-[65px] z-30 -mx-4 sm:-mx-6 md:mx-0">
                                         <div className="relative w-full">
                                             <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">🔍</span>
-                                            <input type="text" placeholder="Cari Nama Customer..." className="bg-gray-100 border-none text-gray-800 text-sm rounded-full pl-9 pr-4 py-2 font-medium outline-none w-full focus:ring-2 focus:ring-[#004aad]/20 transition-all" value={adminHistorySearch} onChange={(e) => setAdminHistorySearch(e.target.value)} />
+                                            <input type="text" placeholder="Cari nama atau WhatsApp customer..." className="bg-gray-100 border-none text-gray-800 text-sm rounded-full pl-9 pr-4 py-2 font-medium outline-none w-full focus:ring-2 focus:ring-[#004aad]/20 transition-all" value={adminHistorySearch} onChange={(e) => setAdminHistorySearch(e.target.value)} />
                                         </div>
                                         <div className="grid grid-cols-2 gap-2 mt-3">
                                             <select className="bg-gray-50 border border-gray-200 text-gray-800 text-xs font-semibold rounded-lg px-3 py-2 outline-none" value={adminFilterPeriod} onChange={(e) => setAdminFilterPeriod(e.target.value)}>
@@ -52,18 +52,7 @@ export default function AdminRiwayatTab({
                                     </div>
 
                                     {(() => {
-                                        const filteredOrders = adminHistoricalOrders
-                                            .filter(o => o.status === 'completed' || o.status === 'cancelled')
-                                            .filter(o => adminFilterService === 'all' ? true : o.tipe_layanan === adminFilterService)
-                                            .filter(o => {
-                                                if (adminFilterStatus === 'all') return true;
-                                                if (adminFilterStatus === 'completed') return o.status === 'completed';
-                                                if (adminFilterStatus === 'cancelled') return o.status === 'cancelled' && (!o.failed_couriers || o.failed_couriers.length === 0);
-                                                if (adminFilterStatus === 'failed') return o.failed_couriers && o.failed_couriers.length > 0;
-                                                return true;
-                                            })
-                                            .filter(o => adminFilterCourier === 'all' ? true : o.assigned_courier_id === adminFilterCourier)
-                                            .filter(o => (o.customer_name || o.customer_wa || '').toLowerCase().includes(adminHistorySearch.toLowerCase()));
+                                        const normalizedSearch = adminHistorySearch.trim().replace(/\s+/g, ' ');
 
                                         return (<>
                                             {isFetchingHistory ? (
@@ -73,7 +62,7 @@ export default function AdminRiwayatTab({
                                                 </div>
                                             ) : (
                                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-0 md:gap-4 -mx-4 md:mx-0">
-                                                {filteredOrders.slice(0, adminHistoryLimit).map(o => {
+                                                {adminHistoricalOrders.map(o => {
                                                     const isFailed = o.failed_couriers && o.failed_couriers.length > 0;
                                                     const statusLabel = o.status === 'completed' ? 'Sukses' : (isFailed ? 'Gagal' : 'Batal');
                                                     const statusColor = o.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : (isFailed ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-700');
@@ -171,7 +160,11 @@ export default function AdminRiwayatTab({
                                                 })}
                                             </div>
                                             )}
-                                            {adminHistoricalOrders.length === adminHistoryLimit && !isFetchingHistory ? (
+                                            {adminHistoricalOrders.length === 0 && normalizedSearch ? (
+                                                <div className="flex justify-center mt-6">
+                                                    <p className="text-gray-400 text-xs font-semibold">Riwayat customer {normalizedSearch} tidak ditemukan</p>
+                                                </div>
+                                            ) : adminHistoricalOrders.length === adminHistoryLimit && !isFetchingHistory ? (
                                                 <div className="flex flex-col items-center mt-6 mb-10 gap-3">
                                                     <button onClick={() => setAdminHistoryLimit(prev => prev + 10)} className="bg-white text-[#004aad] px-6 py-2.5 rounded-xl font-bold shadow-sm border border-[#004aad] hover:bg-blue-50 transition w-full max-w-sm">
                                                         Muat Lebih Banyak Orderan ⬇️

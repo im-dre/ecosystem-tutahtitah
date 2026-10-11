@@ -41,7 +41,7 @@ export default function AdminPortalTab({
             }
 
             const finalMergedData = (merchantsData || [])
-                .filter(m => ['PENDING', 'VERIFIED', 'SUSPENDED'].includes(m.status))
+                .filter(m => ['pending_review', 'approved', 'suspended'].includes(m.status))
                 .map(m => {
                     let hoursStr = "Belum diatur";
                     if (Array.isArray(m.operating_hours)) {
@@ -118,13 +118,13 @@ export default function AdminPortalTab({
 
     // Counter untuk Toko dan Produk yang sudah Live/Terverifikasi
     const totalTokoLive = useMemo(() => {
-        return portalUmkmData.filter(item => item.status === 'verified' || item.status === 'published').length;
+        return portalUmkmData.filter(item => item.status === 'approved').length;
     }, [portalUmkmData]);
 
     const totalProdukLive = useMemo(() => {
         let count = 0;
         portalUmkmData.forEach(item => {
-            if ((item.status === 'verified' || item.status === 'published') && item.produk) {
+            if (item.status === 'approved' && item.produk) {
                 count += item.produk.length;
             }
         });
@@ -168,34 +168,12 @@ export default function AdminPortalTab({
     const handleApproveUMKM = async (umkm) => {
         const toastId = toast.loading(`Memproses persetujuan ${umkm.nama_toko}...`);
         try {
-            const payload = {
-                action: 'approveUMKM',
-                data: umkm
-            };
-
-            const response = await fetch(GAS_API_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-                body: JSON.stringify(payload)
+            const { error } = await supabase.rpc('admin_approve_merchant', {
+                p_merchant_id: umkm.id
             });
-
-            const result = await response.json();
-
-            if (result.status === 'success') {
-                const { data, error: sbError } = await supabase
-                    .from('merchants')
-                    .update({ status: 'VERIFIED', rejection_reason: null })
-                    .eq('id', umkm.id)
-                    .select();
-
-                if (sbError) throw sbError;
-                if (!data || data.length === 0) throw new Error("Gagal update. Diblokir oleh aturan RLS (Security) Supabase.");
-
-                toast.success(result.message, { id: toastId });
-                fetchPortalData();
-            } else {
-                toast.error(`Gagal: ${result.message}`, { id: toastId });
-            }
+            if (error) throw error;
+            toast.success('Toko berhasil disetujui.', { id: toastId });
+            fetchPortalData();
         } catch (error) {
             console.error("Error verifikasi UMKM:", error);
             toast.error("Terjadi kesalahan jaringan.", { id: toastId });
@@ -229,15 +207,11 @@ export default function AdminPortalTab({
         const toastId = toast.loading(`Menolak pengajuan ${umkm.nama_toko}...`);
 
         try {
-            // 3. Update status di Supabase
-            const { data, error: sbError } = await supabase
-                .from('merchants')
-                .update({ status: 'REJECTED', rejection_reason: alasan })
-                .eq('id', umkm.id)
-                .select();
-
-            if (sbError) throw sbError;
-            if (!data || data.length === 0) throw new Error("Gagal update. Diblokir oleh aturan RLS (Security) Supabase.");
+            const { error } = await supabase.rpc('admin_reject_merchant', {
+                p_merchant_id: umkm.id,
+                p_reason: alasan.trim()
+            });
+            if (error) throw error;
 
             toast.success("Pengajuan UMKM berhasil ditolak.", { id: toastId });
             fetchPortalData(); // Refresh antrean di dashboard admin
@@ -268,14 +242,11 @@ export default function AdminPortalTab({
         const toastId = toast.loading(`Mensupend ${umkm.nama_toko}...`);
 
         try {
-            const { data, error: sbError } = await supabase
-                .from('merchants')
-                .update({ status: 'SUSPENDED', rejection_reason: alasan })
-                .eq('id', umkm.id)
-                .select();
-
-            if (sbError) throw sbError;
-            if (!data || data.length === 0) throw new Error("Gagal update. Diblokir oleh aturan RLS (Security) Supabase.");
+            const { error } = await supabase.rpc('admin_suspend_merchant', {
+                p_merchant_id: umkm.id,
+                p_reason: alasan.trim()
+            });
+            if (error) throw error;
 
             toast.success(`Toko ${umkm.nama_toko} resmi dinonaktifkan.`, { id: toastId });
             fetchPortalData();
@@ -301,14 +272,10 @@ export default function AdminPortalTab({
         const toastId = toast.loading(`Membuka suspend ${umkm.nama_toko}...`);
 
         try {
-            const { data, error: sbError } = await supabase
-                .from('merchants')
-                .update({ status: 'VERIFIED', rejection_reason: null })
-                .eq('id', umkm.id)
-                .select();
-
-            if (sbError) throw sbError;
-            if (!data || data.length === 0) throw new Error("Gagal update. Diblokir oleh aturan RLS (Security) Supabase.");
+            const { error } = await supabase.rpc('admin_approve_merchant', {
+                p_merchant_id: umkm.id
+            });
+            if (error) throw error;
 
             toast.success(`Toko ${umkm.nama_toko} berhasil dipulihkan & live kembali!`, { id: toastId });
             fetchPortalData();

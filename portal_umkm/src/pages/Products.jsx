@@ -13,7 +13,7 @@ export default function Products() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
 
-  const isPending = merchant?.status === 'PENDING';
+  const isPending = merchant?.status === 'pending_review';
 
   const fetchProducts = async () => {
     if (!merchant) return;

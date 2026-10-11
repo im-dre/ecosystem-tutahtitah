@@ -17,8 +17,8 @@ const DEFAULT_HOURS = [
 export default function DashboardHome() {
   const { merchant, refreshMerchant } = useAuth();
   const navigate = useNavigate();
-  const status = merchant?.status || 'DRAFT';
-  const isPending = merchant?.status === 'PENDING';
+  const status = merchant?.status || 'draft';
+  const isPending = merchant?.status === 'pending_review';
 
   const [productCount, setProductCount] = useState(0);
 
@@ -194,7 +194,7 @@ export default function DashboardHome() {
                 alt="Logo Toko"
                 className="w-24 h-24 md:w-40 md:h-40 rounded-[1.5rem] md:rounded-[2rem] object-cover border-4 md:border-[6px] border-white shadow-[0_12px_24px_rgb(0,0,0,0.1)] bg-white relative z-10"
               />
-              {status === 'VERIFIED' && (
+              {status === 'approved' && (
                 <div className="absolute -bottom-2 -right-2 bg-white rounded-full shadow-sm z-20" title="Terverifikasi">
                   <img src="/lencana-icon.webp" alt="Verified" className="w-8 h-8 md:w-12 md:h-12 object-contain drop-shadow-sm" />
                 </div>

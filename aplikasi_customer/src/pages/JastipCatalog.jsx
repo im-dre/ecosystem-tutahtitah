@@ -93,9 +93,10 @@ export default function JastipCatalog() {
 
       // 1. Fetch Merchants
       const { data: merchantsData, error: merchantsError } = await supabase
-        .from('merchants')
-        .select('*')
-        .in('status', ['verified', 'published', 'VERIFIED', 'PUBLISHED', 'ACTIVE', 'active']);
+        .from('public_catalog_merchants')
+        .select('id, name, description, address, logo_url, banner_url, operating_hours, is_custom_order')
+        .order('name')
+        .limit(100);
 
       if (!merchantsError && merchantsData) {
         const merchantIds = merchantsData.map(m => m.id);
@@ -105,7 +106,7 @@ export default function JastipCatalog() {
 
         if (merchantIds.length > 0) {
           const [prodRes, ratingsRes, followersRes] = await Promise.all([
-            supabase.from('products').select('id, name, category, merchant_id, price, image_url, variants, rating_score, favorite_count, total_ratings').in('merchant_id', merchantIds).eq('is_available', true),
+            supabase.from('public_catalog_products').select('id, name, category, merchant_id, price, image_url, variants, rating_score, favorite_count, total_ratings').in('merchant_id', merchantIds).limit(500),
             supabase.from('ratings').select('target_id, rating').eq('target_type', 'merchant'),
             supabase.from('merchant_followers').select('merchant_id')
           ]);
@@ -157,7 +158,7 @@ export default function JastipCatalog() {
       setBannersLoading(true);
       const { data, error } = await supabase
         .from('banners')
-        .select('*')
+        .select('id, image_url, is_active, placement, title')
         .eq('is_active', true);
 
       if (!error && data) {
@@ -169,25 +170,6 @@ export default function JastipCatalog() {
     fetchCatalogData();
     fetchBanners();
 
-    // Set up real-time subscription for merchant updates (e.g., operating hours)
-    const merchantChannel = supabase
-      .channel('public:merchants')
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'merchants' },
-        (payload) => {
-          setMerchants((prevMerchants) =>
-            prevMerchants.map((m) =>
-              m.id === payload.new.id ? { ...m, ...payload.new } : m
-            )
-          );
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(merchantChannel);
-    };
   }, []);
 
   // Filter Logic: Category + Complex Search

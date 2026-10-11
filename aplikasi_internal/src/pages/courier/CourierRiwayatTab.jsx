@@ -4,16 +4,12 @@ import { calculateDuration, formatDateTime, parseKirimDetails, parseOjekDetails 
 
 // [LEVEL 3 #14] Tab Riwayat Kurir di-extract dari App.jsx.
 // State filter, pagination, data riwayat, dan handler tetap di App.jsx.
-export default function CourierRiwayatTab({ courierFilterPeriod, setCourierFilterPeriod, courierFilterService, setCourierFilterService, courierFilterStartDate, setCourierFilterStartDate, courierFilterEndDate, setCourierFilterEndDate, courierHistoryOrders, user, courierHistoryLimit, setCourierHistoryLimit, isFetchingHistory, loading, orderRatings }) {
+export default function CourierRiwayatTab({ courierFilterPeriod, setCourierFilterPeriod, courierFilterService, setCourierFilterService, courierFilterStartDate, setCourierFilterStartDate, courierFilterEndDate, setCourierFilterEndDate, courierHistorySearch, setCourierHistorySearch, courierHistoryOrders, user, courierHistoryLimit, setCourierHistoryLimit, isFetchingHistory, loading, orderRatings }) {
     const flattenedHistory = useMemo(() => {
         if (!courierHistoryOrders || !user) return [];
-        const filtered = courierHistoryOrders.filter(o => {
-            if (courierFilterService !== 'all' && o.tipe_layanan !== courierFilterService) return false;
-            return true;
-        });
 
         const arr = [];
-        filtered.forEach(o => {
+        courierHistoryOrders.forEach(o => {
             if (o.failed_couriers && Array.isArray(o.failed_couriers)) {
                 o.failed_couriers.filter(fc => fc.id === user.id).forEach(fc => {
                     arr.push({
@@ -34,7 +30,7 @@ export default function CourierRiwayatTab({ courierFilterPeriod, setCourierFilte
         });
         arr.sort((a, b) => new Date(b._actionTime).getTime() - new Date(a._actionTime).getTime());
         return arr;
-    }, [courierHistoryOrders, courierFilterService, user]);
+    }, [courierHistoryOrders, user]);
 
     return (
 <div className="flex flex-col">
@@ -42,6 +38,10 @@ export default function CourierRiwayatTab({ courierFilterPeriod, setCourierFilte
                                             <div className="flex items-center gap-2 mb-1.5">
                                                 <div className="w-1 h-4 rounded-full bg-[#004aad]"></div>
                                                 <span className="text-[10px] font-bold text-[#004aad] uppercase tracking-widest">Filter Riwayat</span>
+                                            </div>
+                                            <div className="relative w-full">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+                                                <input type="text" placeholder="Cari nama atau WhatsApp customer..." className="w-full bg-white border border-[#004aad]/20 text-gray-800 text-xs rounded-xl py-2.5 pl-9 pr-3 font-bold outline-none focus:border-[#004aad]" value={courierHistorySearch} onChange={(e) => setCourierHistorySearch(e.target.value)} />
                                             </div>
                                             <div className="flex gap-2 w-full">
                                                 <select className="flex-1 bg-white border border-[#004aad]/20 text-gray-800 text-xs rounded-xl p-2.5 font-bold outline-none focus:border-[#004aad]" value={courierFilterPeriod} onChange={(e) => setCourierFilterPeriod(e.target.value)}>
@@ -64,7 +64,7 @@ export default function CourierRiwayatTab({ courierFilterPeriod, setCourierFilte
                                         </div>
 
                                         <div className="p-4 space-y-4">
-                                            {flattenedHistory.length === 0 && !loading && (
+                                            {flattenedHistory.length === 0 && !loading && !courierHistorySearch.trim() && (
                                                 <div className="text-center p-10 bg-white rounded-2xl border border-gray-200 shadow-sm mt-4"><span className="text-5xl block mb-3 opacity-30">📭</span><span className="font-bold text-gray-500 block">Riwayat kosong untuk periode ini.</span></div>
                                             )}
 
@@ -202,7 +202,11 @@ export default function CourierRiwayatTab({ courierFilterPeriod, setCourierFilte
                                                 })()}
                                             </div>
 
-                                            {flattenedHistory.length === courierHistoryLimit && !isFetchingHistory ? (
+                                            {flattenedHistory.length === 0 && courierHistorySearch.trim() ? (
+                                                <div className="flex justify-center mt-6 mb-10">
+                                                    <p className="text-gray-400 text-xs font-semibold">Riwayat customer {courierHistorySearch.trim().replace(/\s+/g, ' ')} tidak ditemukan</p>
+                                                </div>
+                                            ) : flattenedHistory.length === courierHistoryLimit && !isFetchingHistory ? (
                                                 <div className="flex flex-col items-center mt-6 mb-10 gap-3">
                                                     <button onClick={() => setCourierHistoryLimit(prev => prev + 10)} className="bg-white text-[#004aad] px-6 py-2.5 rounded-xl font-bold shadow-sm border border-[#004aad] hover:bg-blue-50 transition w-full max-w-sm">
                                                         Muat Lebih Banyak Orderan ⬇️

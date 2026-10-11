@@ -29,16 +29,10 @@ export default function Register() {
     }
 
     if (authData?.user) {
-      // 2. Buat record merchant awal
-      const { error: dbError } = await supabase
-        .from('merchants')
-        .insert([
-          { 
-            owner_id: authData.user.id,
-            name: storeName,
-            status: 'DRAFT'
-          }
-        ]);
+      // 2. Buat merchant lewat RPC agar status dan owner divalidasi database.
+      const { error: dbError } = await supabase.rpc('register_merchant', {
+        p_name: storeName
+      });
         
       if (dbError) {
         toast.error('Akun terbuat tapi gagal membuat profil toko.');

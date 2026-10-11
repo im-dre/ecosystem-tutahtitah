@@ -292,8 +292,8 @@ export default function MerchantDetail() {
   const fetchMerchantData = async (merchantId) => {
     // Fetch Merchant
     const { data: merchantData, error: merchantError } = await supabase
-      .from('merchants')
-      .select('*')
+      .from('public_catalog_merchants')
+      .select('id, name, description, address, logo_url, banner_url, operating_hours, is_custom_order')
       .eq('id', merchantId)
       .maybeSingle();
 
@@ -301,9 +301,10 @@ export default function MerchantDetail() {
 
     // Fetch Products
     const { data: productsData } = await supabase
-      .from('products')
-      .select('*')
-      .eq('merchant_id', merchantId);
+      .from('public_catalog_products')
+      .select('id, merchant_id, name, description, category, price, image_url, variants, badge, rating_score, total_ratings, favorite_count')
+      .eq('merchant_id', merchantId)
+      .limit(100);
 
     // Fetch Favorites and Follows
     const { data: { session } } = await supabase.auth.getSession();
@@ -328,7 +329,7 @@ export default function MerchantDetail() {
 
     const { count: followersCountData } = await supabase
       .from('merchant_followers')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('merchant_id', merchantId);
 
     const { data: ratingsData } = await supabase
