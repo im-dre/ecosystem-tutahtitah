@@ -302,7 +302,7 @@ export default function MerchantDetail() {
     // Fetch Products
     const { data: productsData } = await supabase
       .from('public_catalog_products')
-      .select('id, merchant_id, name, description, category, price, image_url, variants, badge, rating_score, total_ratings, favorite_count')
+      .select('id, merchant_id, name, category, price, image_url, is_available, badge, variants, rating_score, total_ratings, favorite_count')
       .eq('merchant_id', merchantId)
       .limit(100);
 

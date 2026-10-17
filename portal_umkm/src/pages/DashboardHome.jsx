@@ -15,12 +15,15 @@ const DEFAULT_HOURS = [
 ];
 
 export default function DashboardHome() {
-  const { merchant, refreshMerchant } = useAuth();
+  const { merchant, refreshMerchant, submitMerchantForReview } = useAuth();
   const navigate = useNavigate();
-  const status = merchant?.status || 'draft';
-  const isPending = merchant?.status === 'pending_review';
+  const [merchantStatus, setMerchantStatus] = useState(merchant?.status || 'draft');
+  const status = merchantStatus;
+  const isPending = status === 'pending_review';
+  const canSubmitForReview = ['draft', 'rejected'].includes(status);
 
   const [productCount, setProductCount] = useState(0);
+  const [isSubmittingForReview, setIsSubmittingForReview] = useState(false);
 
   // Profile Form States
   const [formData, setFormData] = useState({
@@ -37,6 +40,7 @@ export default function DashboardHome() {
 
   useEffect(() => {
     if (merchant) {
+      setMerchantStatus(merchant.status || 'draft');
       const fetchCount = async () => {
         const { count } = await supabase
           .from('products')
@@ -164,6 +168,24 @@ export default function DashboardHome() {
     await saveProfile(file);
   };
 
+  const handleSubmitForReview = async () => {
+    if (!merchant?.id || !canSubmitForReview || isSubmittingForReview) return;
+
+    setIsSubmittingForReview(true);
+    try {
+      const { error } = await submitMerchantForReview(merchant.id);
+      if (error) throw error;
+
+      setMerchantStatus('pending_review');
+      toast.success('Toko berhasil diajukan untuk verifikasi admin.');
+      await refreshMerchant();
+    } catch (error) {
+      toast.error(error.message || 'Gagal mengajukan verifikasi toko.');
+    } finally {
+      setIsSubmittingForReview(false);
+    }
+  };
+
   return (
     <div className="w-full pb-24 md:pb-8 animate-fade-in">
       {/* 
@@ -242,6 +264,37 @@ export default function DashboardHome() {
               )}
             </div>
           </div>
+
+           {canSubmitForReview && (
+             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 md:px-5">
+               <div className="flex items-start gap-3">
+                 <i className="ph-fill ph-shield-check text-amber-600 text-xl mt-0.5"></i>
+                 <div>
+                   <p className="font-black text-amber-950">Toko siap diajukan?</p>
+                   <p className="text-xs text-amber-800">Kirim profil toko Anda ke antrean verifikasi admin.</p>
+                 </div>
+               </div>
+               <button
+                 type="button"
+                 onClick={handleSubmitForReview}
+                 disabled={isSubmittingForReview}
+                 className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-black text-white shadow-md shadow-brand-500/20 transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
+               >
+                 <i className={`ph-bold ${isSubmittingForReview ? 'ph-spinner-gap animate-spin' : 'ph-paper-plane-tilt'}`}></i>
+                 {isSubmittingForReview ? 'Mengajukan...' : 'Ajukan Verifikasi Toko'}
+               </button>
+             </div>
+           )}
+
+           {isPending && (
+             <div className="flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 md:px-5 text-blue-900">
+               <i className="ph-fill ph-hourglass-medium text-xl text-blue-600"></i>
+               <div>
+                 <p className="font-black">Menunggu Verifikasi Admin</p>
+                 <p className="text-xs text-blue-700">Pengajuan toko Anda sudah masuk ke antrean admin.</p>
+               </div>
+             </div>
+           )}
 
           <div className="text-left w-full flex flex-col gap-1.5 md:gap-2.5">
             {/* Inline Edit for Description */}

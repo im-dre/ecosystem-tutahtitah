@@ -106,7 +106,7 @@ export default function JastipCatalog() {
 
         if (merchantIds.length > 0) {
           const [prodRes, ratingsRes, followersRes] = await Promise.all([
-            supabase.from('public_catalog_products').select('id, name, category, merchant_id, price, image_url, variants, rating_score, favorite_count, total_ratings').in('merchant_id', merchantIds).limit(500),
+            supabase.from('public_catalog_products').select('id, name, category, merchant_id, price, image_url, is_available, badge, variants, rating_score, total_ratings, favorite_count').in('merchant_id', merchantIds).limit(500),
             supabase.from('ratings').select('target_id, rating').eq('target_type', 'merchant'),
             supabase.from('merchant_followers').select('merchant_id')
           ]);

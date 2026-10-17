@@ -119,7 +119,7 @@ export default function Home() {
     if (key === 'home_data') {
       const [merchantsRes, productsRes, bannersRes, ratingsRes, followersRes] = await Promise.all([
         supabase.from('public_catalog_merchants').select('id, name, description, address, logo_url, banner_url, operating_hours, is_custom_order').order('name').limit(100),
-        supabase.from('public_catalog_products').select('id, merchant_id, name, description, category, price, image_url, variants, badge, rating_score, total_ratings, favorite_count').limit(500),
+        supabase.from('public_catalog_products').select('id, merchant_id, name, category, price, image_url, is_available, badge, variants, rating_score, total_ratings, favorite_count').limit(500),
         supabase.from('banners').select('id, image_url, is_active, placement, title').eq('is_active', true),
         supabase.from('ratings').select('target_id, rating').eq('target_type', 'merchant'),
         supabase.from('merchant_followers').select('merchant_id')

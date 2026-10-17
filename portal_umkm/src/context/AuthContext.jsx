@@ -10,22 +10,11 @@ export function AuthProvider({ children }) {
 
   // Fetch merchant row tied to the logged-in user
   const fetchMerchant = async (userId) => {
-    // 1. Get customer record linked to auth_id
-    const { data: customer, error: custError } = await supabase
-      .from('customers')
-      .select('id')
-      .eq('auth_id', userId)
-      .maybeSingle();
-
-    if (custError || !customer) {
-      console.warn('Customer not found for auth user:', userId);
-      return null;
-    }
-
-    // 2. Fetch merchant using auth userId as owner_id
+    // Every authenticated portal user is identified by the merchant owner_id.
+    // This includes merchants that are still in the draft registration state.
     const { data, error } = await supabase
       .from('merchants')
-      .select('*')
+      .select('id, owner_id, name, description, address, logo_url, banner_url, operating_hours, status, rejection_reason, is_active, is_custom_order, warning_points, created_at')
       .eq('owner_id', userId)
       .maybeSingle();
       

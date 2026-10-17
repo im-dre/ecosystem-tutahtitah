@@ -33,7 +33,9 @@ export default function AdminPortalTab({
             // ==========================================
             const { data: merchantsData, error: sbError } = await supabase
                 .from('merchants')
-                .select('*, products(*)');
+                .select('id, name, description, address, logo_url, operating_hours, status, rejection_reason, products(id, name, price, image_url, category, is_available)')
+                .in('status', ['pending_review', 'approved', 'suspended'])
+                .limit(1000);
 
             if (sbError) {
                 console.error("Gagal menarik data dari Supabase:", sbError);
@@ -41,7 +43,6 @@ export default function AdminPortalTab({
             }
 
             const finalMergedData = (merchantsData || [])
-                .filter(m => ['pending_review', 'approved', 'suspended'].includes(m.status))
                 .map(m => {
                     let hoursStr = "Belum diatur";
                     if (Array.isArray(m.operating_hours)) {
@@ -71,7 +72,7 @@ export default function AdminPortalTab({
                             harga: p.price || 0,
                             foto_url: p.image_url || "",
                             kategori_produk: p.category || "",
-                            is_available: p.is_active !== false
+                            is_available: p.is_available !== false
                         })),
                         alasan_suspend: m.rejection_reason || null,
                         alasan_penolakan: m.rejection_reason || null
@@ -307,7 +308,7 @@ export default function AdminPortalTab({
 
                                         {/* 2. Verifikasi UMKM Baru */}
                                         <button onClick={() => setPortalTab('umkm')} className={`flex-shrink-0 whitespace-nowrap px-4 py-2.5 rounded-lg font-bold text-[11px] sm:text-sm transition ${portalTab === 'umkm' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
-                                            🏪 Verifikasi UMKM ({portalUmkmData.filter(x => x.status && x.status.toLowerCase() === 'pending').length})
+                                            🏪 Verifikasi UMKM ({portalUmkmData.filter(x => x.status === 'pending_review').length})
                                         </button>
 
                                         {/* 3. BARU: TOKO DI-SUSPEND */}
@@ -375,7 +376,7 @@ export default function AdminPortalTab({
 
                                                         <div className="divide-y divide-gray-200">
                                                             {portalUmkmData
-                                                                .filter(item => item.status === 'verified' || item.status === 'published')
+                                                                .filter(item => item.status === 'approved')
                                                                 .filter(item => (item.nama_toko || '').toLowerCase().includes(searchVerifiedToko.toLowerCase()))
                                                                 .length === 0 ? (
                                                                 <div className="p-8 text-center text-gray-400 font-medium text-xs sm:text-sm">
@@ -383,7 +384,7 @@ export default function AdminPortalTab({
                                                                 </div>
                                                             ) : (
                                                                 portalUmkmData
-                                                                    .filter(item => item.status === 'verified' || item.status === 'published')
+                                                                    .filter(item => item.status === 'approved')
                                                                     .filter(item => (item.nama_toko || '').toLowerCase().includes(searchVerifiedToko.toLowerCase()))
                                                                     .map((umkm) => (
                                                                         <div key={umkm.id} className="p-4 sm:p-6 hover:bg-gray-50/50 transition">
@@ -461,7 +462,7 @@ export default function AdminPortalTab({
                                                         🚫 Daftar Toko Yang Sedang Di-Suspend
                                                     </h2>
 
-                                                    {portalUmkmData.filter(umkm => umkm.status && umkm.status.toLowerCase() === 'suspended').length === 0 ? (
+                                                    {portalUmkmData.filter(umkm => umkm.status === 'suspended').length === 0 ? (
                                                         <div className="p-12 text-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
                                                             <span className="text-4xl block mb-2">🎉</span>
                                                             <h3 className="text-lg font-bold text-gray-700">Tidak ada toko yang di-suspend</h3>
@@ -470,7 +471,7 @@ export default function AdminPortalTab({
                                                     ) : (
                                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                             {portalUmkmData
-                                                                .filter(umkm => umkm.status && umkm.status.toLowerCase() === 'suspended')
+                                                                .filter(umkm => umkm.status === 'suspended')
                                                                 .map((umkm) => (
                                                                     <div key={umkm.id} className="p-5 border border-red-200 rounded-xl shadow-sm bg-red-50/20 flex flex-col justify-between">
                                                                         <div>
@@ -583,7 +584,7 @@ export default function AdminPortalTab({
                                                     </h2>
 
                                                     {/* 1. FILTER KHUSUS STATUS PENDING UNTUK CEK KOSONG */}
-                                                    {portalUmkmData.filter(umkm => umkm.status && umkm.status.toLowerCase() === 'pending').length === 0 ? (
+                                                    {portalUmkmData.filter(umkm => umkm.status === 'pending_review').length === 0 ? (
 
                                                         // TAMPILAN JIKA TIDAK ADA UMKM PENDING
                                                         <div className="p-12 text-center bg-gray-50 rounded-lg border border-dashed border-gray-300">
@@ -597,7 +598,7 @@ export default function AdminPortalTab({
                                                         // TAMPILAN CARD UMKM (FILTER KHUSUS STATUS PENDING SAJA)
                                                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                                             {portalUmkmData
-                                                                .filter(umkm => umkm.status && umkm.status.toLowerCase() === 'pending')
+                                                                    .filter(umkm => umkm.status === 'pending_review')
                                                                 .map((umkm, index) => (
                                                                     <div key={umkm.id || index} className="p-5 border border-gray-200 rounded-xl shadow-sm bg-white flex flex-col h-full">
 
