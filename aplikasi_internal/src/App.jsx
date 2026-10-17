@@ -989,7 +989,7 @@ export default function App() {
             while (true) {
                 let pagedQuery = supabase.from("orders")
                     .select("id, status, total_price, delivery_fee, tipe_layanan, created_at, completed_at, dispatched_at, assigned_courier_id, failed_couriers")
-                    .in("status", ["completed", "cancelled", "unreachable"])
+                    .in("status", ["completed", "cancelled"])
                     .eq("is_deleted", false)
                     .order("created_at", { ascending: false })
                     .range(from, from + pageSize - 1);
@@ -1024,7 +1024,7 @@ export default function App() {
         setIsFetchingHistory(true);
         try {
             const { start, end } = getPeriodDateRange(period, customStart, customEnd);
-            let query = supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers, inputted_by").in("status", ["completed", "cancelled", "unreachable"]).eq("is_deleted", false).order("created_at", { ascending: false });
+            let query = supabase.from("orders").select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers, inputted_by").in("status", ["completed", "cancelled"]).eq("is_deleted", false).order("created_at", { ascending: false });
 
             if (start) query = query.gte("created_at", start);
             if (end) query = query.lte("created_at", end);
@@ -1175,7 +1175,7 @@ export default function App() {
                 const newStatus = p.new?.status;
 
                 // --- REALTIME UPDATE UNTUK RIWAYAT / ANALITIK ---
-                if (['completed', 'cancelled', 'unreachable'].includes(newStatus)) {
+                if (['completed', 'cancelled'].includes(newStatus)) {
                     const updateHist = (prev) => {
                         if (!prev.find(o => o.id === p.new.id)) return [p.new, ...prev].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
                         return prev.map(o => o.id === p.new.id ? p.new : o);
@@ -1463,7 +1463,7 @@ export default function App() {
         if (!courierId || !fee) return showNotif("Pilih Kurir & isi Ongkos Jasa dulu bro!", "error");
         try {
             setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "processing", assigned_courier_id: courierId, delivery_fee: parseFloat(fee || 0), kendala_info: null, dispatched_at: new Date().toISOString() } : o));
-            const { error } = await supabase.from("orders").update({ status: "processing", assigned_courier_id: courierId, delivery_fee: parseFloat(fee || 0), kendala_info: null, dispatched_at: new Date().toISOString() }).eq("id", orderId);
+            const { error } = await supabase.rpc('admin_dispatch_order', { p_order_id: orderId, p_courier_id: courierId, p_delivery_fee: parseFloat(fee) });
             if (error) throw error;
             setDispatchInputs(prev => ({ ...prev, [`${orderId}_courier`]: "", [`${orderId}_fee`]: "" }));
             showNotif("Tugas & Ongkir terkirim ke kurir!", "success");
@@ -1487,9 +1487,9 @@ export default function App() {
 
         if (cancelReason) {
             try {
-                const finalReason = `Dibatalkan Admin: ${cancelReason}`;
-                setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "cancelled", kendala_info: finalReason } : o));
-                const { error } = await supabase.from("orders").update({ status: "cancelled", kendala_info: finalReason }).eq("id", orderId);
+                const alasanBatal = `Dibatalkan Admin: ${cancelReason}`;
+                setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "cancelled", kendala_info: alasanBatal } : o));
+                const { error } = await supabase.rpc("admin_cancel_order", { p_order_id: orderId, p_alasan: alasanBatal });
                 if (error) throw error; showNotif("Order dibatalkan oleh Admin!", "success");
             } catch { showNotif(`Gagal batal order`, "error"); }
         }
@@ -1506,7 +1506,9 @@ export default function App() {
             // 2. Bungkus kembali ke format asli template jastip lo
             const finalText = `Format Belanja/Jastip:\n${cleanLinesText}\n\nNote: ${editNote.trim()}`;
 
-            const { error } = await supabase.from("orders").update({ raw_order_text: finalText, status: "processing", kendala_info: null }).eq("id", editingOrder.id);
+            const { error: resumeError } = await supabase.rpc('courier_resume_processing', { p_order_id: editingOrder.id });
+            if (resumeError) throw resumeError;
+            const { error } = await supabase.from("orders").update({ raw_order_text: finalText, kendala_info: null }).eq("id", editingOrder.id);
             if (error) throw error; setIsEditModalOpen(false); showNotif("Pesanan di-update, orderan lanjut jalan!", "success");
         } catch { showNotif(`Gagal update pesanan`, "error"); }
     };
@@ -1552,9 +1554,9 @@ export default function App() {
 
         if (cancelReason) {
             try {
-                const finalReason = `Dibatalkan: ${cancelReason}`;
-                setAllOrders(prev => prev.map(o => o.id === editingOrder.id ? { ...o, status: "cancelled", kendala_info: finalReason } : o));
-                const { error } = await supabase.from("orders").update({ status: "cancelled", kendala_info: finalReason }).eq("id", editingOrder.id);
+                const alasanBatal = `Dibatalkan: ${cancelReason}`;
+                setAllOrders(prev => prev.map(o => o.id === editingOrder.id ? { ...o, status: "cancelled", kendala_info: alasanBatal } : o));
+                const { error } = await supabase.rpc("admin_cancel_order", { p_order_id: editingOrder.id, p_alasan: alasanBatal });
                 if (error) throw error; setIsEditModalOpen(false); showNotif("Pesanan berhasil DIBATALKAN!", "success");
             } catch { showNotif(`Gagal membatalkan`, "error"); }
         }
@@ -1673,7 +1675,7 @@ export default function App() {
         if (!kendalaNote) return showNotif("Harap isi keterangan kendala!", "error");
         try {
             setAllOrders(prev => prev.map(o => o.id === kendalaForm.id ? { ...o, status: 'hold', kendala_info: kendalaNote } : o));
-            const { error } = await supabase.from("orders").update({ status: 'hold', kendala_info: kendalaNote }).eq("id", kendalaForm.id);
+            const { error } = await supabase.rpc('courier_report_hold', { p_order_id: kendalaForm.id, p_kendala: kendalaNote });
             if (error) throw error; setIsKendalaModalOpen(false); showNotif("Kendala dilaporkan ke Admin!", "success");
         } catch { showNotif(`Gagal lapor kendala`, "error"); }
     };
@@ -1681,10 +1683,11 @@ export default function App() {
     const submitTidakBisaLanjut = async (orderId) => {
         try {
             const order = allOrders.find(o => o.id === orderId);
+            const payloadKurirGagal = { id: user.id, name: user.name, reason: order.kendala_info || "Menyerah karena kendala", time: new Date().toISOString() };
             const currentFailed = Array.isArray(order.failed_couriers) ? order.failed_couriers : [];
-            const newFailed = [...currentFailed, { id: user.id, name: user.name, reason: order.kendala_info || "Menyerah karena kendala", time: new Date().toISOString() }];
+            const newFailed = [...currentFailed, payloadKurirGagal];
             setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "waiting_customer", failed_couriers: newFailed } : o));
-            const { error } = await supabase.from("orders").update({ status: "waiting_customer", failed_couriers: newFailed }).eq("id", orderId);
+            const { error } = await supabase.rpc('courier_give_up', { p_order_id: orderId, p_courier_data: payloadKurirGagal });
             if (error) throw error; showNotif("Order dilepas.", "success");
         } catch { showNotif(`Gagal update`, "error"); }
     };
@@ -1692,7 +1695,7 @@ export default function App() {
     const handleLanjutProsesKendala = async (orderId) => {
         try {
             setAllOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: "processing" } : o));
-            const { error } = await supabase.from("orders").update({ status: "processing" }).eq("id", orderId);
+            const { error } = await supabase.rpc('courier_resume_processing', { p_order_id: orderId });
             if (error) throw error; showNotif("Order dilanjutkan kembali!", "success");
         } catch { showNotif(`Gagal update`, "error"); }
     };
@@ -1845,9 +1848,12 @@ export default function App() {
                 ...o, status: "delivering", total_price: parseFloat(finalTotalPrice || 0), delivery_fee: parseFloat(finalFee || 0), bill_details: detailText
             } : o));
 
-            const { error } = await supabase.from("orders").update({
-                status: "delivering", total_price: parseFloat(finalTotalPrice || 0), delivery_fee: parseFloat(finalFee || 0), bill_details: detailText
-            }).eq("id", order.id);
+            const { error } = await supabase.rpc('courier_submit_bill', {
+                p_order_id: order.id,
+                p_total_price: parseFloat(finalTotalPrice || 0),
+                p_delivery_fee: parseFloat(finalFee || 0),
+                p_bill_details: detailText
+            });
 
             if (error) throw error;
             showNotif("Rincian tagihan berhasil diteruskan ke Admin!", "success");
@@ -1875,7 +1881,7 @@ export default function App() {
 
         try {
             setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: "completed", total_price: parseFloat(finalTotalPrice || 0), delivery_fee: parseFloat(finalFee || 0), completed_at: new Date().toISOString() } : o));
-            const { error } = await supabase.from("orders").update({ status: "completed", total_price: parseFloat(finalTotalPrice || 0), delivery_fee: parseFloat(finalFee || 0), completed_at: new Date().toISOString() }).eq("id", order.id);
+            const { error } = await supabase.rpc('admin_complete_order', { p_order_id: order.id, p_total_price: finalTotalPrice, p_delivery_fee: finalFee });
             if (error) throw error; showNotif(`Sukses! Data keuangan tersimpan.`, "success");
         } catch { showNotif(`Gagal menyelesaikan order`, "error"); }
     };
@@ -2105,7 +2111,7 @@ export default function App() {
                                         const newCourier = dispatchInputs[`${order.id}_courier_ganti`];
                                         if (!newCourier) return showNotif("Pilih kurir pengganti dulu!", "error");
                                         try {
-                                            const { error } = await supabase.from("orders").update({ status: "processing", assigned_courier_id: newCourier, kendala_info: null, dispatched_at: new Date().toISOString() }).eq("id", order.id);
+                                            const { error } = await supabase.rpc('admin_dispatch_order', { p_order_id: order.id, p_courier_id: newCourier, p_delivery_fee: parseFloat(order.delivery_fee || 0) });
                                             if (error) throw error;
                                             showNotif("Berhasil ganti kurir & lanjut proses!", "success");
                                             setDispatchInputs({ ...dispatchInputs, [`${order.id}_courier_ganti`]: "" });
