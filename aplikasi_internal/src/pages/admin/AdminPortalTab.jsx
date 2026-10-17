@@ -1,7 +1,8 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from 'react-hot-toast';
 import Swal from 'sweetalert2';
 import { GAS_API_URL } from "../../lib/firebase";
+import MerchantActivityModal from '../../components/modals/MerchantActivityModal';
 
 // ✅ [LEVEL 3 #11] Tab Manajemen Publik (Portal UMKM & Testimoni) — di-extract dari App.jsx
 // Props:
@@ -24,6 +25,7 @@ export default function AdminPortalTab({
     isLoadingTestimoni, setIsLoadingTestimoni,
     expandedStores, toggleStoreProducts
 }) {
+    const [activityMerchant, setActivityMerchant] = useState(null);
     const fetchPortalData = async () => {
         try {
             console.log("🚀 [MULAI DETEKTIF] Menarik data Portal Publik...");
@@ -33,7 +35,7 @@ export default function AdminPortalTab({
             // ==========================================
             const { data: merchantsData, error: sbError } = await supabase
                 .from('merchants')
-                .select('id, name, description, address, logo_url, operating_hours, status, rejection_reason, products(id, name, price, image_url, category, is_available)')
+                .select('id, name, description, address, logo_url, operating_hours, status, rejection_reason, suspension_reason, resubmission_note, products(id, name, price, image_url, category, is_available)')
                 .in('status', ['pending_review', 'approved', 'suspended'])
                 .limit(1000);
 
@@ -65,6 +67,9 @@ export default function AdminPortalTab({
                         logoUrl: m.logo_url || "",
                         jam_operasional: hoursStr,
                         status: m.status.toLowerCase(),
+                        rejection_reason: m.rejection_reason || '',
+                        suspension_reason: m.suspension_reason || '',
+                        resubmission_note: m.resubmission_note || '',
                         produk: (m.products || []).map(p => ({
                             id_produk: p.id,
                             nama_produk: p.name,
@@ -74,7 +79,7 @@ export default function AdminPortalTab({
                             kategori_produk: p.category || "",
                             is_available: p.is_available !== false
                         })),
-                        alasan_suspend: m.rejection_reason || null,
+                        alasan_suspend: m.suspension_reason || null,
                         alasan_penolakan: m.rejection_reason || null
                     };
                 });
@@ -489,7 +494,7 @@ export default function AdminPortalTab({
                                                                             {/* Alasan Suspend */}
                                                                             <div className="bg-red-50 p-3 rounded-lg border border-red-200 mb-3 text-xs shadow-inner">
                                                                                 <p className="font-bold text-red-900 mb-0.5">⚠️ Alasan Suspend dari Admin:</p>
-                                                                                <p className="text-red-800 italic">"{umkm.alasan_suspend || 'Tidak dicantumkan'}"</p>
+                                                                                <p className="text-red-800 italic">"{umkm.suspension_reason || 'Tidak dicantumkan'}"</p>
                                                                             </div>
 
                                                                             {/* Blok Jika Penjual Mengajukan Banding */}
@@ -619,6 +624,11 @@ export default function AdminPortalTab({
                                                                                         Status: {umkm.status}
                                                                                     </span>
                                                                                 </div>
+                                                                                {umkm.resubmission_note && (
+                                                                                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                                                                                        <span className="font-bold">Catatan Perbaikan dari UMKM:</span> {umkm.resubmission_note}
+                                                                                    </div>
+                                                                                )}
                                                                             </div>
                                                                         </div>
 
@@ -680,6 +690,12 @@ export default function AdminPortalTab({
                                                                         </div>
 
                                                                         {/* Tombol Aksi */}
+                                                                        <button
+                                                                            onClick={() => setActivityMerchant(umkm)}
+                                                                            className="w-full mb-3 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold py-2.5 px-4 rounded-lg text-sm transition-colors border border-blue-200"
+                                                                        >
+                                                                            🕘 Lihat Riwayat Aktivitas
+                                                                        </button>
                                                                         <div className="flex gap-3 mt-auto pt-4 border-t">
                                                                             <button
                                                                                 onClick={() => handleApproveUMKM(umkm)}
@@ -800,6 +816,7 @@ export default function AdminPortalTab({
                                             )}
                                         </>
                                     )}
+                                    {activityMerchant && <MerchantActivityModal supabase={supabase} merchant={activityMerchant} onClose={() => setActivityMerchant(null)} />}
                                 </div>
     );
 }

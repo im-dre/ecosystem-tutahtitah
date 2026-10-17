@@ -374,7 +374,9 @@ export type Database = {
           operating_hours: Json | null
           owner_id: string
           rejection_reason: string | null
+          resubmission_note: string | null
           status: string | null
+          suspension_reason: string | null
           warning_points: number | null
         }
         Insert: {
@@ -390,7 +392,9 @@ export type Database = {
           operating_hours?: Json | null
           owner_id: string
           rejection_reason?: string | null
+          resubmission_note?: string | null
           status?: string | null
+          suspension_reason?: string | null
           warning_points?: number | null
         }
         Update: {
@@ -406,7 +410,9 @@ export type Database = {
           operating_hours?: Json | null
           owner_id?: string
           rejection_reason?: string | null
+          resubmission_note?: string | null
           status?: string | null
+          suspension_reason?: string | null
           warning_points?: number | null
         }
         Relationships: []

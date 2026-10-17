@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast';
+import MerchantActivityTimeline from '../components/MerchantActivityTimeline';
 
 const DEFAULT_HOURS = [
   {day: 'Senin', is_open: true, open: '08:00', close: '20:00'},
@@ -20,10 +21,12 @@ export default function DashboardHome() {
   const [merchantStatus, setMerchantStatus] = useState(merchant?.status || 'draft');
   const status = merchantStatus;
   const isPending = status === 'pending_review';
-  const canSubmitForReview = ['draft', 'rejected'].includes(status);
+  const canSubmitForReview = ['draft', 'rejected', 'suspended'].includes(status);
+  const requiresResubmissionNote = ['rejected', 'suspended'].includes(status);
 
   const [productCount, setProductCount] = useState(0);
   const [isSubmittingForReview, setIsSubmittingForReview] = useState(false);
+  const [resubmissionNote, setResubmissionNote] = useState('');
 
   // Profile Form States
   const [formData, setFormData] = useState({
@@ -49,6 +52,18 @@ export default function DashboardHome() {
         setProductCount(count || 0);
       };
       fetchCount();
+
+      const activityKey = `merchant-login-activity:${merchant.id}`;
+      if (!sessionStorage.getItem(activityKey)) {
+        supabase.rpc('log_merchant_activity', {
+          p_merchant_id: merchant.id,
+          p_type: 'AUTH_EVENT',
+          p_title: 'Login Pertama Kali',
+          p_desc: 'Merchant berhasil masuk ke Portal UMKM.'
+        }).then(({ error }) => {
+          if (!error) sessionStorage.setItem(activityKey, '1');
+        });
+      }
 
       setCurrentLogoUrl(merchant.logo_url || '');
       const savedHours = merchant.operating_hours || [];
@@ -148,6 +163,12 @@ export default function DashboardHome() {
       }
       
       toast.success("Profil berhasil diperbarui!");
+      await supabase.rpc('log_merchant_activity', {
+        p_merchant_id: merchant.id,
+        p_type: 'PROFILE_UPDATED',
+        p_title: 'Profil Toko Diperbarui',
+        p_desc: 'Informasi profil toko berhasil disimpan.'
+      });
       await refreshMerchant();
       if (customFile) {
         setLogoFile(null);
@@ -170,13 +191,18 @@ export default function DashboardHome() {
 
   const handleSubmitForReview = async () => {
     if (!merchant?.id || !canSubmitForReview || isSubmittingForReview) return;
+    if (requiresResubmissionNote && !resubmissionNote.trim()) {
+      toast.error('Catatan Perbaikan wajib diisi sebelum mengajukan kembali.');
+      return;
+    }
 
     setIsSubmittingForReview(true);
     try {
-      const { error } = await submitMerchantForReview(merchant.id);
+      const { error } = await submitMerchantForReview(merchant.id, requiresResubmissionNote ? resubmissionNote.trim() : null);
       if (error) throw error;
 
       setMerchantStatus('pending_review');
+      setResubmissionNote('');
       toast.success('Toko berhasil diajukan untuk verifikasi admin.');
       await refreshMerchant();
     } catch (error) {
@@ -269,9 +295,23 @@ export default function DashboardHome() {
              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 md:px-5">
                <div className="flex items-start gap-3">
                  <i className="ph-fill ph-shield-check text-amber-600 text-xl mt-0.5"></i>
-                 <div>
-                   <p className="font-black text-amber-950">Toko siap diajukan?</p>
-                   <p className="text-xs text-amber-800">Kirim profil toko Anda ke antrean verifikasi admin.</p>
+                  <div className="w-full">
+                    <p className="font-black text-amber-950">{requiresResubmissionNote ? 'Ajukan kembali verifikasi' : 'Toko siap diajukan?'}</p>
+                    <p className="text-xs text-amber-800">Kirim profil toko Anda ke antrean verifikasi admin.</p>
+                    {requiresResubmissionNote && (
+                      <>
+                        <p className="mt-3 text-xs font-bold text-red-800">Alasan {status === 'rejected' ? 'penolakan' : 'suspend'}:</p>
+                        <p className="text-sm text-red-900">{status === 'rejected' ? merchant?.rejection_reason : merchant?.suspension_reason}</p>
+                        <textarea
+                          value={resubmissionNote}
+                          onChange={(event) => setResubmissionNote(event.target.value)}
+                          rows="3"
+                          required
+                          placeholder="Contoh: Foto KTP sudah saya ganti yang lebih jelas, min"
+                          className="mt-3 w-full rounded-xl border border-amber-300 bg-white p-3 text-sm text-gray-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20"
+                        />
+                      </>
+                    )}
                  </div>
                </div>
                <button
@@ -281,7 +321,7 @@ export default function DashboardHome() {
                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-black text-white shadow-md shadow-brand-500/20 transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-60"
                >
                  <i className={`ph-bold ${isSubmittingForReview ? 'ph-spinner-gap animate-spin' : 'ph-paper-plane-tilt'}`}></i>
-                 {isSubmittingForReview ? 'Mengajukan...' : 'Ajukan Verifikasi Toko'}
+                  {isSubmittingForReview ? 'Mengajukan...' : requiresResubmissionNote ? 'Ajukan Kembali Verifikasi' : 'Ajukan Verifikasi Toko'}
                </button>
              </div>
            )}
@@ -441,6 +481,10 @@ export default function DashboardHome() {
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="px-4 md:px-10 mt-6">
+        <MerchantActivityTimeline merchantId={merchant?.id} />
       </div>
       
     </div>

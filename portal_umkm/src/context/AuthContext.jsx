@@ -14,7 +14,7 @@ export function AuthProvider({ children }) {
     // This includes merchants that are still in the draft registration state.
     const { data, error } = await supabase
       .from('merchants')
-      .select('id, owner_id, name, description, address, logo_url, banner_url, operating_hours, status, rejection_reason, is_active, is_custom_order, warning_points, created_at')
+      .select('id, owner_id, name, description, address, logo_url, banner_url, operating_hours, status, rejection_reason, suspension_reason, resubmission_note, is_active, is_custom_order, warning_points, created_at')
       .eq('owner_id', userId)
       .maybeSingle();
       
@@ -69,9 +69,10 @@ export function AuthProvider({ children }) {
     return await supabase.auth.signUp({ email, password });
   };
 
-  const submitMerchantForReview = async (merchantId) => {
+  const submitMerchantForReview = async (merchantId, note = null) => {
     return await supabase.rpc('submit_merchant_for_review', {
-      p_merchant_id: merchantId
+      p_merchant_id: merchantId,
+      p_note: note
     });
   };
 
