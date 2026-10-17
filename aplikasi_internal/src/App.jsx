@@ -872,7 +872,7 @@ export default function App() {
     const fetchActiveOrders = useCallback(async () => {
         const { data, error } = await supabase.from("orders")
             .select("id, status, total_price, customer_name, customer_address, created_at, delivery_fee, is_deleted, customer_wa, raw_order_text, assigned_courier_id, bill_details, kendala_info, image_url, tipe_layanan, bill_sent, completed_at, dispatched_at, failed_couriers, inputted_by")
-            .in("status", ["pending", "processing", "hold", "waiting_customer", "searching_courier", "courier_found", "on_delivery", "picking_up", "item_ready", "delivering"])
+            .in("status", ["pending", "processing", "hold", "waiting_customer", "delivering"])
             .eq("is_deleted", false).order("created_at", { ascending: false }).limit(500);
         if (error) throw error;
         setAllOrders(data || []);
@@ -1622,12 +1622,21 @@ export default function App() {
             }
 
             const isDirectDispatch = manualForm.courier && manualForm.fee;
-            const { error } = await supabase.from("orders").insert([{
-                customer_name: manualForm.name, customer_wa: manualForm.wa, customer_address: manualForm.address, raw_order_text: finalOrderText, tipe_layanan: manualForm.type, status: isDirectDispatch ? 'processing' : 'pending', total_price: 0, delivery_fee: isDirectDispatch ? parseFloat(manualForm.fee || 0) : 0,
+            const { error } = await supabase.rpc("admin_create_manual_order", {
+                customer_name: manualForm.name,
+                customer_wa: manualForm.wa,
+                customer_address: manualForm.address,
+                raw_order_text: finalOrderText,
+                tipe_layanan: manualForm.type,
+                status: isDirectDispatch ? 'processing' : 'pending',
+                total_price: 0,
+                delivery_fee: isDirectDispatch ? parseFloat(manualForm.fee || 0) : 0,
                 image_url: uploadedImageUrls.length > 0 ? uploadedImageUrls.join(',') : null,
-                assigned_courier_id: isDirectDispatch ? manualForm.courier : null, dispatched_at: isDirectDispatch ? new Date().toISOString() : null,
-                inputted_by: user ? user.name : null
-            }]);
+                assigned_courier_id: isDirectDispatch ? manualForm.courier : null,
+                dispatched_at: isDirectDispatch ? new Date().toISOString() : null,
+                inputted_by: user ? user.name : null,
+                items: null
+            });
             if (error) throw error;
 
             setIsManualModalOpen(false); setManualForm({ name: '', wa: '', address: '', text: '', type: 'Belanja', fee: '', courier: '' }); setManualImages([]);

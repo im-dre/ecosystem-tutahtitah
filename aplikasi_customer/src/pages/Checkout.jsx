@@ -141,25 +141,20 @@ export default function Checkout() {
         return storeStr + itemsStr;
       }).join('\n\n') + `\n\nAlamat: ${customAddress || profile?.address || 'Alamat tidak diisi'}`;
 
-      const { data, error } = await supabase.from('orders').insert([{
-        customer_id: profile?.id,
-        customer_name: profile?.name || '-',
-        customer_wa: profile?.whatsapp || profile?.wa_number || profile?.phone || '-',
-        customer_address: customAddress || profile?.address || 'Alamat tidak diisi',
-        tipe_layanan: 'Belanja',
-        merchant_id: merchant?.id || null, // Might be null for multi-merchant
-        items: itemsWithNotes,
-        total_amount: finalTotalAmount,
-        status: 'pending',
-        raw_order_text: rawOrderText
-      }]).select().single();
+      const { data, error } = await supabase.rpc('customer_checkout', {
+        p_customer_id: profile?.id,
+        p_customer_name: profile?.name || '-',
+        p_customer_wa: profile?.whatsapp || profile?.wa_number || profile?.phone || '-',
+        p_customer_address: customAddress || profile?.address || 'Alamat tidak diisi',
+        p_tipe_layanan: 'Belanja',
+        p_merchant_id: merchant?.id || null,
+        p_items: itemsWithNotes,
+        p_total_amount: finalTotalAmount,
+        p_raw_order_text: rawOrderText,
+        p_draft_id: location.state?.draftId || null
+      });
 
       if (error) throw error;
-
-      // Delete draft if it was checked out from a draft
-      if (location.state?.draftId) {
-        await supabase.from('draft_orders').delete().eq('id', location.state.draftId);
-      }
 
       if (location.state?.isRepeatOrder) {
         toast.success('Pesanan berhasil dibuat!');
@@ -168,7 +163,7 @@ export default function Checkout() {
         }
         navigate('/activity', { replace: true });
       } else {
-        setCreatedOrderId(data.id);
+        setCreatedOrderId(data);
         setShowFavoriteModal(true);
       }
     } catch (error) {
@@ -182,7 +177,11 @@ export default function Checkout() {
   const handleFavoriteResponse = async (isFavorite) => {
     if (isFavorite && createdOrderId) {
       try {
-        await supabase.from('orders').update({ is_favorite: true }).eq('id', createdOrderId);
+        const { error } = await supabase.rpc('customer_set_order_favorite', {
+          p_order_id: createdOrderId,
+          p_is_favorite: true
+        });
+        if (error) throw error;
         toast.success("Pesanan ditambahkan ke Favorit! ❤️");
       } catch (e) {
         console.error(e);

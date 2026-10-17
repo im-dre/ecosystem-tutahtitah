@@ -96,25 +96,24 @@ export default function AntarJemputOrder() {
 
       const rawOrderText = `Alamat Jemput: ${formData.pickup}\nAlamat Tujuan: ${formData.destination}\nNote/Patokan Titik Jemput: ${formData.notes || '-'}`;
 
-      // Insert order
-      const { data, error } = await supabase.from('orders').insert([{
-        customer_id: profile.id,
-        customer_name: profile.name,
-        customer_wa: profile.whatsapp || profile.wa_number || profile.phone || '-', 
-        customer_address: formData.pickup,
-        tipe_layanan: 'Antar Jemput',
-        merchant_id: null,
-        items: [{
+      const { data, error } = await supabase.rpc('customer_checkout', {
+        p_customer_id: profile.id,
+        p_customer_name: profile.name,
+        p_customer_wa: profile.whatsapp || profile.wa_number || profile.phone || '-',
+        p_customer_address: formData.pickup,
+        p_tipe_layanan: 'Antar Jemput',
+        p_merchant_id: null,
+        p_items: [{
           id: `antarjemput_${Date.now()}`,
           name: 'Layanan Antar Jemput',
           is_custom: true,
           qty: 1,
           price: 0
         }],
-        total_amount: 0,
-        status: 'pending',
-        raw_order_text: rawOrderText
-      }]).select().single();
+        p_total_amount: 0,
+        p_raw_order_text: rawOrderText,
+        p_draft_id: null
+      });
 
       if (error) throw error;
 
@@ -122,7 +121,7 @@ export default function AntarJemputOrder() {
         toast.success('Pesanan Antar Jemput berhasil dibuat!');
         navigate('/activity', { replace: true });
       } else {
-        setCreatedOrderId(data.id);
+        setCreatedOrderId(data);
         setShowFavoriteModal(true);
       }
     } catch (error) {
@@ -136,7 +135,11 @@ export default function AntarJemputOrder() {
   const handleFavoriteResponse = async (isFavorite) => {
     if (isFavorite && createdOrderId) {
       try {
-        await supabase.from('orders').update({ is_favorite: true }).eq('id', createdOrderId);
+        const { error } = await supabase.rpc('customer_set_order_favorite', {
+          p_order_id: createdOrderId,
+          p_is_favorite: true
+        });
+        if (error) throw error;
         toast.success("Pesanan ditambahkan ke Favorit! ❤️");
       } catch (e) {
         console.error(e);
