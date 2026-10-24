@@ -161,7 +161,7 @@ export default function ChatRoom() {
       // Fetch existing messages
       const { data: messagesData, error: messagesError } = await supabase
         .from('messages')
-        .select('*')
+        .select('id, chat_id, sender_id, sender_type, content, metadata, is_read, created_at, is_deleted_by_customer')
         .eq('chat_id', id)
         .eq('is_deleted_by_customer', false)
         .order('created_at', { ascending: true });
@@ -210,20 +210,25 @@ export default function ChatRoom() {
           filter: `chat_id=eq.${id}`
         },
         (payload) => {
+          const newMessage = {
+            ...payload.new,
+            metadata: payload.new.metadata,
+          };
+
           setMessages(prev => {
-            if (prev.find(m => m.id === payload.new.id)) return prev;
+            if (prev.find(m => m.id === newMessage.id)) return prev;
             // Update timestamp referensi
-            lastMsgTimestampRef.current = payload.new.created_at;
-            return [...prev, payload.new];
+            lastMsgTimestampRef.current = newMessage.created_at;
+            return [...prev, newMessage];
           });
           setTimeout(scrollToBottom, 100);
           
           // Mark as read segera karena customer lagi buka chat room ini
-          if (payload.new.sender_type !== 'customer') {
+          if (newMessage.sender_type !== 'customer') {
             supabase
               .from('messages')
               .update({ is_read: true })
-              .eq('id', payload.new.id)
+              .eq('id', newMessage.id)
               .then();
           }
         }
@@ -812,6 +817,15 @@ export default function ChatRoom() {
           <div className="flex flex-col space-y-2">
             {messages.map((msg, idx, arr) => {
               const isMe = msg.sender_type === 'customer';
+              let metadata = msg.metadata;
+              if (typeof metadata === 'string') {
+                try {
+                  metadata = JSON.parse(metadata);
+                } catch {
+                  metadata = null;
+                }
+              }
+              const senderName = isMe ? 'Anda' : (metadata?.sender_name || 'Customer Service');
               
               // Grouping by Date
               const currentMsgDate = dayjs(msg.created_at || Date.now()).format('YYYY-MM-DD');
@@ -832,17 +846,19 @@ export default function ChatRoom() {
                     </div>
                   )}
                   <div className={`flex ${isMe ? 'justify-end' : 'justify-start'} ${isGrouped ? 'mt-0.5' : 'mt-2'}`}>
-                    <div className={`max-w-[80%] rounded-2xl px-3.5 py-2.5 shadow-sm relative transition-transform active:scale-[0.98] ${
-                      isMe 
-                        ? 'bg-primary text-white rounded-tr-sm shadow-blue-900/10' 
-                        : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'
-                    }`}
-                    onTouchStart={() => handleTouchStart(msg)}
-                    onTouchEnd={handleTouchEnd}
-                    onMouseDown={() => handleTouchStart(msg)}
-                    onMouseUp={handleTouchEnd}
-                    onMouseLeave={handleTouchEnd}
-                    >
+                    <div className={`flex max-w-[80%] flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                      {!isGrouped && <p className="mb-1 px-1 text-[10px] font-semibold text-gray-400">{senderName}</p>}
+                      <div className={`w-fit rounded-2xl px-3.5 py-2.5 shadow-sm relative transition-transform active:scale-[0.98] ${
+                        isMe
+                          ? 'bg-primary text-white rounded-tr-sm shadow-blue-900/10'
+                          : 'bg-white text-gray-800 rounded-tl-sm border border-gray-100'
+                      }`}
+                      onTouchStart={() => handleTouchStart(msg)}
+                      onTouchEnd={handleTouchEnd}
+                      onMouseDown={() => handleTouchStart(msg)}
+                      onMouseUp={handleTouchEnd}
+                      onMouseLeave={handleTouchEnd}
+                      >
                       <p className={`text-sm leading-snug break-words ${msg.metadata && (msg.content === 'Mengirim lampiran...' || msg.content === '') ? 'hidden' : ''}`}>
                         {msg.content}
                       </p>
@@ -968,6 +984,7 @@ export default function ChatRoom() {
                              <path d="M15.01 3.316l-.478-.372a.365.365 0 0 0-.51.063L8.666 9.879a.32.32 0 0 1-.484.033l-.358-.325a.319.319 0 0 0-.484.032l-.378.483a.418.418 0 0 0 .036.541l1.32 1.266c.143.14.361.125.484-.033l6.272-8.048a.366.366 0 0 0-.064-.512zm-4.1 0l-.478-.372a.365.365 0 0 0-.51.063L4.566 9.879a.32.32 0 0 1-.484.033L1.891 7.769a.366.366 0 0 0-.515.006l-.423.433a.364.364 0 0 0 .006.514l3.258 3.185c.143.14.361.125.484-.033l6.272-8.048a.365.365 0 0 0-.063-.51z"></path>
                            </svg>
                         )}
+                      </div>
                       </div>
                     </div>
                   </div>

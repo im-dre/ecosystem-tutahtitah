@@ -202,10 +202,10 @@ export default function App() {
                 open: '08:00',
                 close: '21:00'
             }));
-            const { error } = await supabase
-                .from('merchants')
-                .update({ operating_hours: newOperatingHours })
-                .eq('id', customOrderMerchantId);
+            const { error } = await supabase.rpc('admin_set_merchant_hours', {
+                p_merchant_id: customOrderMerchantId,
+                p_hours: newOperatingHours
+            });
             if (error) throw error;
             setIsCustomOrderOpen(newStatus);
             toast.success(newStatus ? 'ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Layanan Custom Order DIBUKA!' : 'ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬â„¢ Layanan Custom Order DITUTUP!');
@@ -1585,7 +1585,10 @@ export default function App() {
 
         if (text) {
             try {
-                const { error } = await supabase.from('orders').update({ is_deleted: true, kendala_info: `Dihapus Permanen: ${text}` }).eq('id', orderId);
+                const { error } = await supabase.rpc('admin_soft_delete_order', {
+                    p_order_id: orderId,
+                    p_alasan: 'Dihapus Permanen: ' + text
+                });
                 if (error) throw error;
                 setAllOrders(prev => prev.filter(o => o.id !== orderId));
                 setAdminHistoricalOrders(prev => prev.filter(o => o.id !== orderId));
@@ -1715,7 +1718,10 @@ export default function App() {
 
         try {
             const parsedOngkir = parseInt(newOngkir);
-            const { error } = await supabase.from('orders').update({ delivery_fee: parsedOngkir }).eq('id', order.id);
+            const { error } = await supabase.rpc('admin_edit_delivery_fee', {
+                p_order_id: order.id,
+                p_fee: parsedOngkir
+            });
             if (error) throw error;
 
             setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, delivery_fee: parsedOngkir } : o));

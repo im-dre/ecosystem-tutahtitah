@@ -18,8 +18,8 @@ const formatDateGroup = (dateString) => {
 // Render message bubble content
 function MessageBubble({ msg, isMine, onLongPress }) {
   let content = null;
+  let meta = null;
   if (msg.metadata) {
-    let meta;
     try { meta = typeof msg.metadata === 'string' ? JSON.parse(msg.metadata) : msg.metadata; } catch { meta = null; }
     if (meta?.type === 'image' && meta.url) {
       content = (
@@ -69,6 +69,7 @@ function MessageBubble({ msg, isMine, onLongPress }) {
   if (!content) {
     content = <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>;
   }
+  const senderName = meta?.sender_name || (msg.sender_type === 'customer' ? msg.customer_name : 'Admin/Kurir');
   return (
     <div
       className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} mb-1`}
@@ -76,6 +77,7 @@ function MessageBubble({ msg, isMine, onLongPress }) {
       onTouchEnd={() => onLongPress && onLongPress(null)}
       onContextMenu={(e) => { e.preventDefault(); onLongPress && onLongPress(msg); }}
     >
+      <p className="mb-1 px-1 text-[10px] font-semibold text-gray-400">{senderName}</p>
       <div className={`max-w-[75%] rounded-2xl px-3 py-2 shadow-sm ${isMine
         ? 'bg-[#004aad] text-white rounded-br-sm'
         : 'bg-white text-gray-900 rounded-bl-sm border border-gray-100'

@@ -213,13 +213,10 @@ export default function OrderDetail() {
 
     try {
       setCancelLoading(true);
-      const { error } = await supabase
-        .from('orders')
-        .update({
-          status: 'cancelled',
-          kendala_info: `Dibatalkan Customer: ${cancelReason}`
-        })
-        .eq('id', id);
+      const { error } = await supabase.rpc('customer_cancel_order', {
+        p_order_id: id,
+        p_alasan: 'Dibatalkan Customer: ' + cancelReason
+      });
 
       if (error) throw error;
 
