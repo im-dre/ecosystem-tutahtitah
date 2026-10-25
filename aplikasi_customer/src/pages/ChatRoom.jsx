@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { compressImage } from '../lib/compressImage';
 import { ArrowLeft, Send, Store, User, Bike, Paperclip, Image as ImageIcon, Package, Receipt, X, ChevronRight, Copy, Trash2, MoreVertical, Flag, Star, Heart, MessageCircle } from 'lucide-react';
@@ -8,6 +8,7 @@ import dayjs from 'dayjs';
 import 'dayjs/locale/id';
 import RatingModal from '../components/RatingModal';
 import ReportModal from '../components/ReportModal';
+import useRealtimeChat from '../utils/chat_core/useRealtimeChat';
 
 dayjs.locale('id');
 
@@ -50,13 +51,12 @@ const getFinalPrice = (item) => {
 export default function ChatRoom() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [messages, setMessages] = useState([]);
+  const location = useLocation();
+  const orderContext = location.state?.orderContext;
   const [newMessage, setNewMessage] = useState('');
   const [chatInfo, setChatInfo] = useState(null);
   const [participantName, setParticipantName] = useState('');
   const [participantImage, setParticipantImage] = useState(null);
-  const [merchantData, setMerchantData] = useState(null);
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   
@@ -75,20 +75,23 @@ export default function ChatRoom() {
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [isFollowed, setIsFollowed] = useState(false);
   const [isChatClosed, setIsChatClosed] = useState(false);
+  const isMerchantChat = ['merchant', 'customer_merchant'].includes(chatInfo?.chat_type);
 
   const longPressTimer = useRef(null);
   const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
-  const lastMsgTimestampRef = useRef(null); // Track timestamp pesan terakhir untuk polling
+  const {
+    messages,
+    setMessages,
+    isLoading: isLoadingMessages,
+    addOptimisticMessage,
+    replaceMessage,
+    removeMessage,
+  } = useRealtimeChat({ supabase, chatId: id });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 60000);
-    return () => clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     let merchantChannel = null;
@@ -103,7 +106,7 @@ export default function ChatRoom() {
       // Fetch chat details
       const { data: chatData, error: chatError } = await supabase
         .from('chats')
-        .select('*')
+        .select('id, chat_type, customer_id, participant_id, order_id, status, created_at, updated_at')
         .eq('id', id)
         .single();
 
@@ -115,23 +118,17 @@ export default function ChatRoom() {
       
       setChatInfo(chatData);
 
-      if (chatData.chat_type === 'merchant') {
-        const { data: mData } = await supabase.from('merchants').select('*').eq('id', chatData.participant_id).maybeSingle();
+      if (['merchant', 'customer_merchant'].includes(chatData.chat_type)) {
+        const { data: mData } = await supabase
+          .from('merchants')
+          .select('id, name, logo_url')
+          .eq('id', chatData.participant_id)
+          .maybeSingle();
         if (mData) {
-          setMerchantData(mData);
           setParticipantName(mData.name);
           if (mData.logo_url) setParticipantImage(mData.logo_url);
         }
         
-        // Setup realtime listener for this merchant
-        merchantChannel = supabase
-          .channel(`merchant_status_${chatData.participant_id}_${Date.now()}`)
-          .on(
-            'postgres_changes',
-            { event: 'UPDATE', schema: 'public', table: 'merchants', filter: `id=eq.${chatData.participant_id}` },
-            (payload) => setMerchantData(payload.new)
-          )
-          .subscribe();
 
       } else if (chatData.chat_type === 'courier') {
         const { data: cData } = await supabase.from('employees').select('full_name').eq('id', chatData.participant_id).maybeSingle();
@@ -158,29 +155,14 @@ export default function ChatRoom() {
           .subscribe();
       }
 
-      // Fetch existing messages
-      const { data: messagesData, error: messagesError } = await supabase
-        .from('messages')
-        .select('id, chat_id, sender_id, sender_type, content, metadata, is_read, created_at, is_deleted_by_customer')
-        .eq('chat_id', id)
-        .eq('is_deleted_by_customer', false)
-        .order('created_at', { ascending: true });
-
-      if (!messagesError && messagesData) {
-        setMessages(messagesData);
-        // Simpan timestamp pesan terakhir untuk polling
-        if (messagesData.length > 0) {
-          lastMsgTimestampRef.current = messagesData[messagesData.length - 1].created_at;
-        }
-      }
       setLoading(false);
       setTimeout(scrollToBottom, 100);
 
       // Check if followed (only if merchant)
-      if (chatData.chat_type === 'merchant') {
+      if (['merchant', 'customer_merchant'].includes(chatData.chat_type)) {
         const { data: followData } = await supabase
           .from('merchant_followers')
-          .select('*')
+          .select('id')
           .eq('customer_id', user.id)
           .eq('merchant_id', chatData.participant_id)
           .maybeSingle();
@@ -194,65 +176,47 @@ export default function ChatRoom() {
         .eq('chat_id', id)
         .neq('sender_type', 'customer')
         .eq('is_read', false);
+
     };
 
     initChat();
 
-    // Subscribe to new messages
-    const channel = supabase
-      .channel(`chat_${id}_${Date.now()}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `chat_id=eq.${id}`
-        },
-        (payload) => {
-          const newMessage = {
-            ...payload.new,
-            metadata: payload.new.metadata,
-          };
-
-          setMessages(prev => {
-            if (prev.find(m => m.id === newMessage.id)) return prev;
-            // Update timestamp referensi
-            lastMsgTimestampRef.current = newMessage.created_at;
-            return [...prev, newMessage];
-          });
-          setTimeout(scrollToBottom, 100);
-          
-          // Mark as read segera karena customer lagi buka chat room ini
-          if (newMessage.sender_type !== 'customer') {
-            supabase
-              .from('messages')
-              .update({ is_read: true })
-              .eq('id', newMessage.id)
-              .then();
-          }
-        }
-      )
-      .subscribe();
-
     return () => {
-      supabase.removeChannel(channel);
       if (merchantChannel) supabase.removeChannel(merchantChannel);
       if (orderChannel) supabase.removeChannel(orderChannel);
     };
-    }, [id, navigate]);
+  }, [id, navigate]);
+
+  useEffect(() => {
+    if (!loading && !isLoadingMessages) {
+      setTimeout(scrollToBottom, 100);
+    }
+  }, [isLoadingMessages, loading, messages.length]);
 
   const handleSendMessage = async (e, customMetadata = null) => {
     if (e) e.preventDefault();
     if (!newMessage.trim() && !customMetadata && stagedAttachments.length === 0) return;
 
     let finalMetadata = customMetadata;
+    if (!finalMetadata && !messages.some(message => message.metadata?.type === 'order') && orderContext?.id) {
+      finalMetadata = {
+        type: 'order',
+        order_id: orderContext.id,
+        status: orderContext.status,
+        total_price: orderContext.total_price,
+        total_amount: orderContext.total_amount,
+        delivery_fee: orderContext.delivery_fee,
+        tipe_layanan: orderContext.tipe_layanan,
+        items: Array.isArray(orderContext.items) ? orderContext.items : [],
+        merchant_name: orderContext.merchant_name,
+      };
+    }
     if (!finalMetadata && stagedAttachments.length > 0) {
       const firstStaged = stagedAttachments[0];
       if (firstStaged.type === 'order') {
         finalMetadata = {
           type: 'order',
-          id: firstStaged.id,
+          order_id: firstStaged.id,
           status: firstStaged.status,
           total_price: firstStaged.total_price,
           total_amount: firstStaged.total_amount,
@@ -296,7 +260,7 @@ export default function ChatRoom() {
       created_at: new Date().toISOString()
     };
     
-    setMessages(prev => [...prev, optimisticMsg]);
+    addOptimisticMessage(optimisticMsg);
     setTimeout(scrollToBottom, 50);
 
     const { data: realMsg, error } = await supabase
@@ -313,12 +277,11 @@ export default function ChatRoom() {
 
     if (error) {
       console.error('Failed to send message:', error);
-      setMessages(prev => prev.filter(m => m.id !== optimisticMsg.id));
+      removeMessage(optimisticMsg.id);
     } else {
       // Ganti temp message dengan row asli dari DB
       // Realtime event yang datang belakangan akan di-skip karena ID sudah ada
-      setMessages(prev => prev.map(m => m.id === optimisticMsg.id ? realMsg : m));
-      if (realMsg) lastMsgTimestampRef.current = realMsg.created_at;
+      replaceMessage(optimisticMsg.id, realMsg);
       await supabase
         .from('chats')
         .update({ updated_at: new Date().toISOString() })
@@ -328,10 +291,15 @@ export default function ChatRoom() {
 
   const handleOpenProducts = async () => {
     setShowAttachMenu(false);
-    if (!chatInfo || chatInfo.chat_type !== 'merchant') return;
+    if (!chatInfo || !['merchant', 'customer_merchant'].includes(chatInfo.chat_type)) return;
     
     setIsUploading(true);
-    const { data } = await supabase.from('products').select('*').eq('merchant_id', chatInfo.participant_id).eq('is_available', true);
+    const { data } = await supabase
+      .from('products')
+      .select('id, name, price, image_url, merchant_id, is_available')
+      .eq('merchant_id', chatInfo.participant_id)
+      .eq('is_available', true)
+      .limit(100);
     if (data) setMerchantProducts(data);
     setIsUploading(false);
     setShowProductModal(true);
@@ -359,7 +327,7 @@ export default function ChatRoom() {
     if (data) {
       let filteredOrders = data;
       
-      if (chatInfo.chat_type === 'merchant') {
+      if (['merchant', 'customer_merchant'].includes(chatInfo.chat_type)) {
         const merchantId = chatInfo.participant_id;
         
         filteredOrders = data.filter(order => {
@@ -510,7 +478,7 @@ export default function ChatRoom() {
   };
 
   const handleFollowMerchant = async () => {
-    if (!chatInfo || chatInfo.chat_type !== 'merchant') return;
+    if (!chatInfo || !['merchant', 'customer_merchant'].includes(chatInfo.chat_type)) return;
     setShowHeaderMenu(false);
     
     if (isFollowed) {
@@ -551,41 +519,19 @@ export default function ChatRoom() {
     window.open(`https://wa.me/${waNumber}?text=${encodeURIComponent(text)}`, '_blank');
   };
 
-  const getStoreStatus = () => {
-    if (!merchantData) return { isOpen: false };
-    if (!merchantData.operating_hours || !Array.isArray(merchantData.operating_hours)) {
-      return { isOpen: true };
-    }
-    const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
-    const today = days[currentTime.getDay()];
-    const todayHours = merchantData.operating_hours.find(h => h.day === today);
-    if (!todayHours || !todayHours.is_open) return { isOpen: false };
-    
-    const currentMins = currentTime.getHours() * 60 + currentTime.getMinutes();
-    const [openH, openM] = (todayHours.open || '00:00').split(':').map(Number);
-    const [closeH, closeM] = (todayHours.close || '23:59').split(':').map(Number);
-    const openMins = openH * 60 + openM;
-    const closeMins = closeH * 60 + closeM;
-    
-    return { isOpen: currentMins >= openMins && currentMins <= closeMins };
-  };
-
   // Determine header info
   let title = 'Customer Service';
   let subtitle = 'Online';
   let Icon = User;
-  let isStoreOpen = false;
   
   if (chatInfo) {
-    if (chatInfo.chat_type === 'merchant') {
+    if (['merchant', 'customer_merchant'].includes(chatInfo.chat_type)) {
       title = participantName || 'Toko / Merchant';
       Icon = Store;
       if (chatInfo.order_id) {
         subtitle = `Pesanan #${chatInfo.order_id}`;
       } else {
-        const status = getStoreStatus();
-        isStoreOpen = status.isOpen;
-        subtitle = status.isOpen ? 'Online (Toko Buka)' : 'Offline (Toko Tutup)';
+        subtitle = 'Online';
       }
     } else if (chatInfo.chat_type === 'courier') {
       title = participantName || 'Kurir Driver';
@@ -736,14 +682,12 @@ export default function ChatRoom() {
         <div className="flex-1 min-w-0 pr-2">
           <h1 className="text-base font-bold truncate leading-tight">{title}</h1>
           <div className="flex items-center gap-1.5 mt-0.5">
-            {!chatInfo?.order_id && chatInfo?.chat_type === 'merchant' ? (
-              <div className={`w-2 h-2 rounded-full ${isStoreOpen ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+            {!chatInfo?.order_id && isMerchantChat ? (
+              <div className="w-2 h-2 rounded-full bg-green-500"></div>
             ) : chatInfo?.chat_type === 'support' ? (
               <div className="w-2 h-2 rounded-full bg-green-500"></div>
             ) : null}
-            <span className={`text-[11px] font-semibold truncate ${
-              (!chatInfo?.order_id && chatInfo?.chat_type === 'merchant' && !isStoreOpen) ? 'text-gray-300' : 'text-blue-100'
-            }`}>{subtitle}</span>
+            <span className="text-[11px] font-semibold truncate text-blue-100">{subtitle}</span>
           </div>
         </div>
         
@@ -763,7 +707,7 @@ export default function ChatRoom() {
               <div className="fixed inset-0 z-40" onClick={() => setShowHeaderMenu(false)}></div>
               
               <div className="absolute top-10 right-0 w-48 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50 animate-slideUp text-gray-800">
-                {chatInfo?.chat_type === 'merchant' && (
+                {isMerchantChat && (
                   <>
                     <button onClick={handleFollowMerchant} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
                       <Heart size={18} className={isFollowed ? "fill-red-500 text-red-500" : "text-gray-500"} />
@@ -825,7 +769,8 @@ export default function ChatRoom() {
                   metadata = null;
                 }
               }
-              const senderName = isMe ? 'Anda' : (metadata?.sender_name || 'Customer Service');
+              const orderId = metadata?.order_id ?? metadata?.id;
+              const senderName = isMe ? 'Anda' : msg.sender_name;
               
               // Grouping by Date
               const currentMsgDate = dayjs(msg.created_at || Date.now()).format('YYYY-MM-DD');
@@ -914,14 +859,14 @@ export default function ChatRoom() {
                       
                       {msg.metadata && msg.metadata.type === 'order' && (
                         <div 
-                          onClick={() => navigate(`/order/${msg.metadata.id}`)}
+                          onClick={() => navigate(`/order/${orderId}`)}
                           className={`mt-1.5 ${isMe ? 'bg-blue-600/20 hover:bg-blue-600/30' : 'bg-gray-50 hover:bg-gray-100'} rounded-xl p-3 cursor-pointer active:scale-95 transition-all text-left flex flex-col`}
                         >
                           <div className={`flex justify-between items-start pb-2 mb-2 border-b ${isMe ? 'border-white/10' : 'border-black/5'}`}>
                             <div className="flex flex-col">
                               <p className={`text-[9px] font-bold uppercase tracking-wider mb-0.5 ${isMe ? 'text-blue-100' : 'text-gray-500'}`}>Pesanan {msg.metadata.tipe_layanan || ''}</p>
                               <div className="flex items-center gap-1">
-                                <p className={`text-[9px] font-medium tracking-tight ${isMe ? 'text-white/70' : 'text-gray-400'}`}>#{msg.metadata.id.toString().substring(0, 8)}</p>
+                                <p className={`text-[9px] font-medium tracking-tight ${isMe ? 'text-white/70' : 'text-gray-400'}`}>#{String(orderId).substring(0, 8)}</p>
                               </div>
                             </div>
                             <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase shadow-sm border ${isMe ? 'bg-white/10 text-white border-white/20' : 'bg-white text-gray-600 border-black/5'}`}>
@@ -1003,16 +948,6 @@ export default function ChatRoom() {
         </div>
       ) : (
       <div className="bg-white z-10 border-t border-gray-100 shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.05)] relative flex flex-col">
-        
-        {/* Offline Notification */}
-        {chatInfo?.chat_type === 'merchant' && !isStoreOpen && (
-          <div className="bg-amber-50/80 backdrop-blur-sm border-b border-amber-100 px-4 py-2.5 flex items-center justify-center gap-2">
-            <span className="text-amber-700 text-[11px] font-semibold text-center leading-tight">
-              Mohon bersabar, toko sedang tutup. Pesan Anda akan dibalas saat toko beroperasi kembali.
-            </span>
-          </div>
-        )}
-
         {/* Staging Area */}
         {stagedAttachments.length > 0 && (
           <div className="px-3 pt-3 pb-1 flex gap-2 overflow-x-auto no-scrollbar">

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import { Clock, CheckCircle2, Package, Loader2, Bike, AlertTriangle, ChevronRight, ChevronDown, Check, ShoppingCart, ShoppingBag, Navigation, Edit3, Heart, PaintRoller, Star, Store, MapPin } from 'lucide-react';
+import { Clock, CheckCircle2, Package, Loader2, Bike, AlertTriangle, ChevronRight, ChevronDown, Check, ShoppingCart, ShoppingBag, Navigation, Edit3, Heart, PaintRoller, Star, Store, MapPin, MessageCircle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import RatingModal from '../components/RatingModal';
 
@@ -320,6 +320,63 @@ export default function Activity() {
     } else {
       toast.error("Fitur Pesan Lagi untuk kategori ini akan segera hadir!");
     }
+  };
+
+  const handleChatMerchant = async (event, order) => {
+    event.stopPropagation();
+    if (!order.merchant_id) {
+      toast.error('Pesanan ini tidak memiliki toko penjual.');
+      return;
+    }
+
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      toast.error('Silakan login dulu untuk chat');
+      return;
+    }
+
+    const { data: existingChat, error: lookupError } = await supabase
+      .from('chats')
+      .select('id')
+      .eq('customer_id', authUser.id)
+      .eq('participant_id', order.merchant_id)
+      .in('chat_type', ['merchant', 'customer_merchant'])
+      .eq('order_id', order.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (lookupError) {
+      toast.error('Gagal membuka chat toko');
+      return;
+    }
+
+    const orderContext = {
+      id: order.id,
+      status: order.status,
+      total_price: order.total_price,
+      total_amount: order.total_amount,
+      delivery_fee: order.delivery_fee,
+      tipe_layanan: order.tipe_layanan,
+      items: Array.isArray(order.items) ? order.items : [],
+      merchant_name: order.merchants?.name,
+    };
+
+    if (existingChat) {
+      navigate(`/chat/${existingChat.id}`, { state: { orderContext } });
+      return;
+    }
+
+    const { data: newChat, error } = await supabase
+      .from('chats')
+      .insert({ chat_type: 'customer_merchant', customer_id: authUser.id, participant_id: order.merchant_id, order_id: order.id })
+      .select('id')
+      .single();
+
+    if (error || !newChat) {
+      toast.error('Gagal membuat obrolan dengan toko');
+      return;
+    }
+    navigate(`/chat/${newChat.id}`, { state: { orderContext } });
   };
 
   const setupRealtime = (userId) => {
@@ -1002,6 +1059,14 @@ export default function Activity() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => handleChatMerchant(e, order)}
+                        className="flex items-center justify-center gap-1 text-[11px] font-bold text-primary bg-blue-50 border border-blue-100 py-1.5 px-3 rounded-lg active:bg-blue-100 transition-colors whitespace-nowrap shadow-sm"
+                        title="Chat Penjual"
+                      >
+                        <MessageCircle size={14} />
+                        Chat
+                      </button>
                       <button
                         onClick={(e) => toggleFavorite(e, order.id, order.is_favorite)}
                         className="p-1.5 rounded-full hover:bg-red-50 text-gray-300 hover:text-red-500 transition-colors active:scale-95"

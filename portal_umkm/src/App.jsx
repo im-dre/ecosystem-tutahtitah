@@ -7,6 +7,7 @@ import DashboardLayout from './pages/DashboardLayout';
 import DashboardHome from './pages/DashboardHome';
 import Products from './pages/Products';
 import Orders from './pages/Orders';
+import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
               <Route index element={<DashboardHome />} />
               <Route path="products" element={<Products />} />
               <Route path="orders" element={<Orders />} />
+              <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<Settings />} />
             </Route>
           </Route>

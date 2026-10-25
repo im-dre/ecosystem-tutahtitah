@@ -70,6 +70,58 @@ export default function OrderDetail() {
     setShowRatingModal(true);
   };
 
+  const handleChatMerchant = async () => {
+    if (!order?.merchant_id) {
+      toast.error('Pesanan ini tidak memiliki toko penjual.');
+      return;
+    }
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    if (!authUser) {
+      toast.error('Silakan login dulu untuk chat');
+      return;
+    }
+
+    const { data: existingChat, error: lookupError } = await supabase
+      .from('chats')
+      .select('id')
+      .eq('customer_id', authUser.id)
+      .eq('participant_id', order.merchant_id)
+      .in('chat_type', ['merchant', 'customer_merchant'])
+      .eq('order_id', order.id)
+      .limit(1)
+      .maybeSingle();
+    if (lookupError) {
+      toast.error('Gagal membuka chat toko');
+      return;
+    }
+
+    const orderContext = {
+      id: order.id,
+      status: order.status,
+      total_price: order.total_price,
+      total_amount: order.total_amount,
+      delivery_fee: order.delivery_fee,
+      tipe_layanan: order.tipe_layanan,
+      items: Array.isArray(order.items) ? order.items : [],
+      merchant_name: order.merchants?.name,
+    };
+    if (existingChat) {
+      navigate(`/chat/${existingChat.id}`, { state: { orderContext } });
+      return;
+    }
+
+    const { data: newChat, error } = await supabase
+      .from('chats')
+      .insert({ chat_type: 'customer_merchant', customer_id: authUser.id, participant_id: order.merchant_id, order_id: order.id })
+      .select('id')
+      .single();
+    if (error || !newChat) {
+      toast.error('Gagal membuat obrolan dengan toko');
+      return;
+    }
+    navigate(`/chat/${newChat.id}`, { state: { orderContext } });
+  };
+
   useEffect(() => {
     const fetchUser = async () => {
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -608,30 +660,40 @@ export default function OrderDetail() {
                       )}
                       <span className="font-bold text-gray-800 text-sm">{group.name}</span>
                     </div>
-                    {/* Rating Button / Stars */}
-                    {order.status === 'completed' && group.id !== 'unknown' && (
-                      (() => {
-                        const merchantRating = orderRatings.find(r => r.target_id === group.id && r.target_type === 'merchant');
-                        return merchantRating ? (
-                          <div className="flex items-center gap-0.5">
-                            {[...Array(5)].map((_, i) => (
-                              <Star key={i} size={16} className={i < (merchantRating.rating || 5) ? "fill-yellow-400 text-yellow-400" : "fill-gray-200 text-gray-200"} />
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 cursor-pointer">
-                            {[...Array(5)].map((_, i) => (
-                              <Star
-                                key={i}
-                                size={20}
-                                className="text-gray-300 hover:fill-yellow-400 hover:text-yellow-400 transition-colors"
-                                onClick={() => openRatingModal(group.id, 'merchant', group.name, i + 1)}
-                              />
-                            ))}
-                          </div>
-                        );
-                      })()
-                    )}
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleChatMerchant}
+                        className="flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1.5 text-[10px] font-bold text-primary transition-colors hover:bg-blue-100 active:scale-95"
+                      >
+                        <MessageSquare size={14} />
+                        Chat Penjual
+                      </button>
+                      {/* Rating Button / Stars */}
+                      {order.status === 'completed' && group.id !== 'unknown' && (
+                        (() => {
+                          const merchantRating = orderRatings.find(r => r.target_id === group.id && r.target_type === 'merchant');
+                          return merchantRating ? (
+                            <div className="flex items-center gap-0.5">
+                              {[...Array(5)].map((_, i) => (
+                                <Star key={i} size={16} className={i < (merchantRating.rating || 5) ? "fill-yellow-400 text-yellow-400" : "fill-gray-200 text-gray-200"} />
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 cursor-pointer">
+                              {[...Array(5)].map((_, i) => (
+                                <Star
+                                  key={i}
+                                  size={20}
+                                  className="text-gray-300 hover:fill-yellow-400 hover:text-yellow-400 transition-colors"
+                                  onClick={() => openRatingModal(group.id, 'merchant', group.name, i + 1)}
+                                />
+                              ))}
+                            </div>
+                          );
+                        })()
+                      )}
+                    </div>
                   </div>
 
                   <div className="space-y-4">
@@ -900,10 +962,34 @@ export default function OrderDetail() {
                           participant_id: order.assigned_courier_id,
                           order_id: order.id
                         })
-                        .select()
+                        .select('id')
                         .single();
 
                       if (newChat && !error) {
+                        const orderMetadata = {
+                          type: 'order',
+                          order_id: order.id,
+                          status: order.status,
+                          total_price: order.total_price,
+                          total_amount: order.total_amount,
+                          delivery_fee: order.delivery_fee,
+                          tipe_layanan: order.tipe_layanan,
+                          items: Array.isArray(order.items) ? order.items : [],
+                        };
+                        const { error: cardError } = await supabase
+                          .from('messages')
+                          .insert({
+                            chat_id: newChat.id,
+                            sender_id: user.id,
+                            sender_type: 'customer',
+                            content: 'Detail pesanan',
+                            metadata: orderMetadata,
+                          });
+
+                        if (cardError) {
+                          console.error('Gagal mengirim kartu pesanan:', cardError);
+                          toast.error('Chat dibuat, tapi kartu pesanan belum terkirim.');
+                        }
                         navigate(`/chat/${newChat.id}`);
                       } else {
                         toast.error("Gagal membuat obrolan dengan kurir");

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { toast } from 'react-hot-toast';
@@ -29,6 +29,8 @@ export default function Orders() {
   const [loading, setLoading] = useState(true);
   const [processingOrderId, setProcessingOrderId] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
+  const [unreadChats, setUnreadChats] = useState({});
+  const [modalMode, setModalMode] = useState('detail');
   const [activeTab, setActiveTab] = useState('proses');
 
   useEffect(() => {
@@ -53,7 +55,30 @@ export default function Orders() {
       setLoading(false);
     };
 
+    const fetchUnreadCounts = async () => {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('chat_id, chats!inner(order_id, participant_id)')
+        .eq('is_read', false)
+        .eq('sender_type', 'customer')
+        .eq('chats.participant_id', merchant.id)
+        .limit(1000);
+
+      if (error) {
+        console.error('Gagal mengambil jumlah chat belum dibaca:', error);
+        return;
+      }
+
+      const counts = {};
+      (data || []).forEach((message) => {
+        const orderId = message.chats?.order_id;
+        if (orderId) counts[orderId] = (counts[orderId] || 0) + 1;
+      });
+      setUnreadChats(counts);
+    };
+
     fetchOrders();
+    fetchUnreadCounts();
 
     // Set up real-time subscription
     const channel = supabase
@@ -89,10 +114,29 @@ export default function Orders() {
       )
       .subscribe();
 
+    const messagesChannel = supabase
+      .channel(`merchant-unread-messages-${merchant.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'messages' },
+        () => { void fetchUnreadCounts(); }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(messagesChannel);
     };
   }, [merchant]);
+
+  const handleOpenOrderModal = (order, mode) => {
+    setSelectedOrder(order);
+    setModalMode(mode);
+
+    if (mode !== 'chat' || unreadChats[order.id] <= 0) return;
+
+    setUnreadChats((previous) => ({ ...previous, [order.id]: 0 }));
+  };
 
   const handleAcceptOrder = async (order) => {
     if (order.status !== 'pending' || processingOrderId === order.id) return;
@@ -337,22 +381,28 @@ export default function Orders() {
                           Tolak Pesanan
                         </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedOrder(order)}
-                        className="border border-brand-100 bg-white px-4 py-2 text-xs font-bold text-brand-600 transition-colors hover:bg-brand-50 rounded-xl"
-                      >
-                        Lihat Detail
-                      </button>
+                      <div className="flex w-full gap-2 sm:w-auto">
+                        <button type="button" onClick={() => handleOpenOrderModal(order, 'chat')} className="relative flex-1 rounded-xl border border-brand-100 bg-blue-50 py-2 text-xs font-bold text-brand-600 transition-colors hover:bg-blue-100 sm:px-4">
+                          <i className="ph-fill ph-chat-teardrop-text mr-1.5 text-sm"></i>
+                          Chat
+                          {unreadChats[order.id] > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-black text-white shadow-sm animate-pulse">{unreadChats[order.id]}</span>}
+                        </button>
+                        <button type="button" onClick={() => { setSelectedOrder(order); setModalMode('detail'); }} className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50">
+                          Detail
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => setSelectedOrder(order)}
-                      className="bg-brand-50 hover:bg-brand-100 text-brand-600 px-4 py-2 rounded-xl text-xs font-bold transition-colors"
-                    >
-                      Lihat Detail
-                    </button>
+                    <div className="flex w-full gap-2 sm:w-auto">
+                      <button type="button" onClick={() => handleOpenOrderModal(order, 'chat')} className="relative flex-1 rounded-xl border border-brand-100 bg-blue-50 py-2 text-xs font-bold text-brand-600 transition-colors hover:bg-blue-100 sm:px-4">
+                        <i className="ph-fill ph-chat-teardrop-text mr-1.5 text-sm"></i>
+                        Chat
+                        {unreadChats[order.id] > 0 && <span className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-black text-white shadow-sm animate-pulse">{unreadChats[order.id]}</span>}
+                      </button>
+                      <button type="button" onClick={() => { setSelectedOrder(order); setModalMode('detail'); }} className="flex-1 rounded-xl border border-gray-200 bg-white px-4 py-2 text-xs font-bold text-gray-600 transition-colors hover:bg-gray-50">
+                        Detail
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -360,7 +410,7 @@ export default function Orders() {
           })}
         </div>
       )}
-      <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
+      <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} viewMode={modalMode} />
     </div>
   );
 }

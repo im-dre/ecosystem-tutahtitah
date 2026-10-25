@@ -10,6 +10,7 @@ export default function DashboardLayout() {
   const location = useLocation();
   const [productCount, setProductCount] = useState(0);
   const [verifying, setVerifying] = useState(false);
+  const [activeChatIds, setActiveChatIds] = useState([]);
 
   useEffect(() => {
     if (merchant && (merchant.status === 'draft' || merchant.status === 'rejected')) {
@@ -23,6 +24,62 @@ export default function DashboardLayout() {
       fetchCount();
     }
   }, [merchant, location.pathname]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const fetchActiveChatIds = async () => {
+      if (!merchant?.id) {
+        setActiveChatIds([]);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('chats')
+        .select('id')
+        .eq('participant_id', merchant.id);
+
+      if (isCancelled) return;
+
+      if (error) {
+        console.error('Gagal memuat daftar chat merchant:', error);
+        setActiveChatIds([]);
+        return;
+      }
+
+      setActiveChatIds((data || []).map((chat) => chat.id));
+    };
+
+    fetchActiveChatIds();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [merchant?.id]);
+
+  useEffect(() => {
+    if (activeChatIds.length === 0) return undefined;
+
+    const channel = supabase
+      .channel(`merchant-chat-notifications-${merchant?.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'messages' },
+        (payload) => {
+          if (
+            activeChatIds.includes(payload.new.chat_id) &&
+            payload.new.sender_type === 'customer'
+          ) {
+            toast.success('Pesan baru dari Customer: ' + payload.new.content);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [activeChatIds, merchant?.id]);
 
   const handleLogout = async () => {
     await signOut();
@@ -52,7 +109,7 @@ export default function DashboardLayout() {
     { name: 'Dashboard', path: '/', image: '/home-icon.webp', exact: true, show: true },
     { name: 'Produk', path: '/products', image: '/produk-icon.webp', show: true },
     { name: 'Pesanan', path: '/orders', image: '/file-icon.webp', show: isVerified },
-    { name: 'Laporan', path: '#', image: '/chart-icon.webp', show: true, isAlert: true },
+    { name: 'Laporan', path: '/reports', image: '/chart-icon.webp', show: isVerified },
     { name: 'Pengaturan', path: '/settings', image: '/setting-icon.webp', show: true },
   ];
 

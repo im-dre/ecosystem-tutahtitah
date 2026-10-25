@@ -61,7 +61,7 @@ export default function ChatList() {
           let title = 'Customer Service';
           let avatar = '/icon-cs.webp'; // Placeholder fallback
 
-          if (chat.chat_type === 'merchant') {
+          if (chat.chat_type === 'merchant' || chat.chat_type === 'customer_merchant') {
             title = 'Toko / Merchant';
             avatar = '/icon-belanja.webp';
             const { data: mData } = await supabase.from('merchants').select('name, logo_url').eq('id', chat.participant_id).maybeSingle();

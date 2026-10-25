@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'react-hot-toast';
 import { supabase } from '../../lib/supabase';
+import useRealtimeChat from '../../utils/chat_core/useRealtimeChat';
 
 const formatDateTime = (value) => {
   if (!value) return 'Belum tersedia';
@@ -14,57 +15,70 @@ const formatDateTime = (value) => {
   }).format(date);
 };
 
-export default function OrderDetailModal({ order, onClose }) {
-  const [messages, setMessages] = useState([]);
+export default function OrderDetailModal({ order, onClose, viewMode = 'detail' }) {
+  const [chat, setChat] = useState(null);
+  const [isLoadingChat, setIsLoadingChat] = useState(false);
   const [messageText, setMessageText] = useState('');
-  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const {
+    messages,
+    isLoading: isLoadingMessages,
+    addOptimisticMessage,
+    removeMessage,
+  } = useRealtimeChat({ supabase, chatId: chat?.id, enabled: viewMode === 'chat' });
 
-  const fetchMessages = useCallback(async () => {
-    if (!order?.id) {
-      setMessages([]);
-      return;
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadChat = async () => {
+      if (!order?.id || viewMode !== 'chat') {
+        setChat(null);
+        return;
+      }
+
+      setIsLoadingChat(true);
+      const { data, error } = await supabase
+        .from('chats')
+        .select('id')
+        .eq('order_id', order.id)
+        .in('chat_type', ['merchant', 'customer_merchant'])
+        .limit(1)
+        .maybeSingle();
+
+      if (isCancelled) return;
+
+      if (error) {
+        console.error('Gagal memuat chat pesanan:', error);
+        setChat(null);
+      } else {
+        setChat(data);
+      }
+      setIsLoadingChat(false);
+    };
+
+    void loadChat();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [order?.id, viewMode]);
+
+  useEffect(() => {
+    if (chat?.id && viewMode === 'chat') {
+      const markAsRead = async () => {
+        const { error } = await supabase
+          .from('messages')
+          .update({ is_read: true })
+          .eq('chat_id', chat.id)
+          .eq('sender_type', 'customer')
+          .eq('is_read', false);
+
+        if (error) console.error('Gagal update status read:', error);
+      };
+
+      void markAsRead();
     }
-
-    setIsLoadingMessages(true);
-
-    const { data: chat, error: chatError } = await supabase
-      .from('chats')
-      .select('id')
-      .eq('order_id', order.id)
-      .eq('chat_type', 'customer_merchant')
-      .limit(1)
-      .maybeSingle();
-
-    if (chatError) {
-      console.error('Gagal memuat chat pesanan:', chatError);
-      setMessages([]);
-      setIsLoadingMessages(false);
-      return;
-    }
-
-    if (!chat) {
-      setMessages([]);
-      setIsLoadingMessages(false);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from('messages')
-      .select('id, chat_id, content, sender_type, created_at')
-      .eq('chat_id', chat.id)
-      .order('created_at', { ascending: true })
-      .limit(200);
-
-    if (error) {
-      console.error('Gagal memuat pesan pesanan:', error);
-      setMessages([]);
-    } else {
-      setMessages(data || []);
-    }
-
-    setIsLoadingMessages(false);
-  }, [order?.id]);
+  }, [chat?.id, viewMode]);
 
   useEffect(() => {
     if (!order) return undefined;
@@ -77,10 +91,6 @@ export default function OrderDetailModal({ order, onClose }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [order, onClose]);
 
-  useEffect(() => {
-    fetchMessages();
-  }, [fetchMessages]);
-
   const handleSendMessage = async (event) => {
     event.preventDefault();
 
@@ -88,20 +98,51 @@ export default function OrderDetailModal({ order, onClose }) {
     if (!content || isSendingMessage || !order?.id) return;
 
     setIsSendingMessage(true);
+    const hasOrderCard = messages.some((message) => message.metadata?.type === 'order');
+    const orderMetadata = hasOrderCard ? null : {
+      type: 'order',
+      order_id: order.id,
+      status: order.status,
+      total_price: order.total_price,
+      total_amount: order.total_amount,
+      delivery_fee: order.delivery_fee,
+      tipe_layanan: order.tipe_layanan,
+      items: Array.isArray(order.items) ? order.items : [],
+      merchant_name: order.merchants?.name || order.merchant_name,
+    };
+    const temporaryId = `optimistic-${crypto.randomUUID()}`;
+    addOptimisticMessage({
+      id: temporaryId,
+      chat_id: chat?.id,
+      content,
+      sender_type: 'merchant',
+      sender_name: 'UMKM',
+      created_at: new Date().toISOString(),
+      metadata: orderMetadata,
+    });
+    setMessageText('');
 
-    const { error } = await supabase.rpc('send_order_chat_message', {
+    const { data: newChatId, error } = await supabase.rpc('send_order_chat_message', {
       p_order_id: order.id,
       p_chat_type: 'customer_merchant',
       p_sender_type: 'merchant',
       p_content: content,
+      p_metadata: orderMetadata,
     });
 
     if (error) {
       console.error('Gagal mengirim pesan pesanan:', error);
+      removeMessage(temporaryId);
+      setMessageText(content);
       toast.error('Pesan gagal dikirim. Coba lagi ya.');
     } else {
-      setMessageText('');
-      await fetchMessages();
+      removeMessage(temporaryId);
+
+      if (!chat?.id && newChatId) {
+        // RPC membuat room secara atomik. Simpan ID-nya agar hook langsung
+        // memuat pesan pertama dan berlangganan realtime room yang tepat.
+        setChat({ id: newChatId });
+      }
     }
 
     setIsSendingMessage(false);
@@ -140,7 +181,9 @@ export default function OrderDetailModal({ order, onClose }) {
       >
         <div className="mb-6 flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Detail Pesanan</p>
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+              {viewMode === 'chat' ? 'Chat Pembeli' : 'Detail Pesanan'}
+            </p>
             <h3 id="order-detail-title" className="mt-1 text-lg font-black text-gray-900">
               #{order.id.toString().substring(0, 8)}
             </h3>
@@ -156,7 +199,9 @@ export default function OrderDetailModal({ order, onClose }) {
         </div>
 
         <div className="space-y-5">
-          <section className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+          {viewMode === 'detail' && (
+            <div className="space-y-5">
+              <section className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
             <div className="mb-3 flex items-center gap-2">
               <i className="ph-fill ph-user-circle text-brand-500" />
               <h4 className="text-sm font-black text-gray-900">Detail Pelanggan</h4>
@@ -171,9 +216,9 @@ export default function OrderDetailModal({ order, onClose }) {
                 <dd className="mt-0.5 leading-relaxed text-gray-700">{order.customer_address || 'Tidak tersedia'}</dd>
               </div>
             </dl>
-          </section>
+              </section>
 
-          <section>
+              <section>
             <div className="mb-3 flex items-center gap-2">
               <i className="ph-fill ph-clock-counter-clockwise text-brand-500" />
               <h4 className="text-sm font-black text-gray-900">Riwayat Status</h4>
@@ -190,26 +235,29 @@ export default function OrderDetailModal({ order, onClose }) {
                 <p className="mt-0.5 text-xs text-gray-500">{formatDateTime(finalStatusTime)}</p>
               </div>
             </div>
-          </section>
+              </section>
 
-          {isCancelled && (
-            <section className="rounded-2xl border border-red-100 bg-red-50 p-4">
+              {isCancelled && (
+                <section className="rounded-2xl border border-red-100 bg-red-50 p-4">
               <div className="mb-2 flex items-center gap-2 text-red-700">
                 <i className="ph-fill ph-warning-circle" />
                 <h4 className="text-sm font-black">Info Kendala</h4>
               </div>
               <p className="text-sm leading-relaxed text-red-700">{order.kendala_info || 'Tidak ada informasi kendala yang dicatat.'}</p>
-            </section>
+                </section>
+              )}
+            </div>
           )}
 
-          <section aria-labelledby="order-chat-title">
+          {viewMode === 'chat' && (
+            <section aria-labelledby="order-chat-title">
             <div className="mb-3 flex items-center gap-2">
               <i className="ph-fill ph-chat-circle-text text-brand-500" />
               <h4 id="order-chat-title" className="text-sm font-black text-gray-900">Obrolan dengan Pelanggan</h4>
             </div>
 
             <div className="h-64 space-y-3 overflow-y-auto rounded-2xl border border-gray-100 bg-gray-50 p-3">
-              {isLoadingMessages ? (
+              {isLoadingChat || isLoadingMessages ? (
                 <p className="pt-20 text-center text-sm text-gray-400">Memuat obrolan...</p>
               ) : messages.length === 0 ? (
                 <p className="pt-20 text-center text-sm text-gray-400">Belum ada pesan untuk pesanan ini.</p>
@@ -218,9 +266,12 @@ export default function OrderDetailModal({ order, onClose }) {
                   const isMerchantMessage = message.sender_type === 'merchant';
 
                   return (
-                    <div key={message.id} className={`flex ${isMerchantMessage ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm ${isMerchantMessage ? 'rounded-br-md bg-brand-500 text-white' : 'rounded-bl-md bg-white text-gray-800'}`}>
+                    <div key={message.id} className={`flex min-w-0 ${isMerchantMessage ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[85%] shrink-0 rounded-2xl px-3 py-2 text-sm shadow-sm ${isMerchantMessage ? 'rounded-br-md bg-brand-500 text-white' : 'rounded-bl-md bg-white text-gray-800'}`}>
                         <p className="break-words leading-relaxed">{message.content}</p>
+                        <p className={`mt-1 text-[10px] font-semibold ${isMerchantMessage ? 'text-white/80' : 'text-gray-500'}`}>
+                          {message.sender_name}
+                        </p>
                         <p className={`mt-1 text-[10px] ${isMerchantMessage ? 'text-white/70' : 'text-gray-400'}`}>
                           {formatDateTime(message.created_at)}
                         </p>
@@ -255,7 +306,8 @@ export default function OrderDetailModal({ order, onClose }) {
                 </button>
               </form>
             )}
-          </section>
+            </section>
+          )}
         </div>
       </section>
     </div>
